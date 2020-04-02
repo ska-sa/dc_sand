@@ -18,7 +18,7 @@ void Test::run_test()
     //Execute the test.
     cudaEventRecord(startEvent);
     run_operation();
-    cudaDeviceSynchronise();
+    cudaDeviceSynchronzse();
     cudaEventRecord(stopEvent);
 
     // Determine the time elapsed
