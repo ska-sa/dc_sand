@@ -1,15 +1,15 @@
-#include "Test.hpp"
+#include "UnitTest.hpp"
 
 #include <iostream>
 #include <cuda.h>
 
-Test::Test() : m_iResult(0)
+UnitTest::UnitTest() : m_iResult(0)
 {
     cudaEventCreate(m_StartEvent);
     cudaEventCreate(m_StopEvent);
 }
 
-Test::~Test()
+UnitTest::~UnitTest()
 {
     cudaEventDestroy(m_StartEvent);
     cudaEventDestroy(m_StopEvent);
@@ -22,7 +22,7 @@ Test::~Test()
  *          kernel accompanied by memory transfers, or it could be as complex as multiple 
  *          interdependent streams.
  */
-void Test::run_test()
+void UnitTest::run_test()
 {
     /// The derived class provides a method to generate simulated input data for the operation.
     simulate_input();
@@ -46,13 +46,13 @@ void Test::run_test()
 /** \details Returns the contents of m_iResult.
  *           This should have been updated by the derived class's implementation of verify_output().
  */
-int Test::get_result()
+int UnitTest::get_result()
 {
     /// The variable is initialised to zero by the constructor, if it's still zero it indicates that the test
     /// hasn't been run yet. This should give the user a warning.
     if (!m_iResult)
     {
-        std::cerr << "Test hasn't been run yet!" << std::endl;  ///\todo Add a "name" parameter so that the warning that it hasn't run yet actually has meaning to the user.
+        std::cerr << "UnitTest hasn't been run yet!" << std::endl;  ///\todo Add a "name" parameter so that the warning that it hasn't run yet actually has meaning to the user.
     }
     return m_iResult;
 }

@@ -3,11 +3,11 @@
 
 ///\todo Examples of how to use this class.
 ///\todo brief and detailed descriptions.
-class Test
+class UnitTest
 {
     public:
         /// The destructor must be virtual to ensure that derived classes' destructors are also called when the objects are destroyed.
-        virtual ~Test();
+        virtual ~UnitTest();
 
         /// Execute the test.
         void  run_test();
@@ -18,7 +18,7 @@ class Test
     
     protected:
         // The constructor is protected as a reminder that we can't instantiate a pure virtual class directly.
-        Test();
+        UnitTest();
 
         // These functions make the class pure virtual and must be implelented by derived classes.
         ///\brief Generate simulated input data.
