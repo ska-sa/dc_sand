@@ -1,13 +1,15 @@
 #ifndef __TEST_HPP__
 #define __TEST_HPP__
 
-///\todo Examples of how to use this class.
-/**\brief   Automated unit tests
+
+/**\class UnitTest
+ * \brief   Automated unit tests
  * \details The assumption of the UnitTest class is that a single kernel will be tested in isolation,
  *          with the intent to understand the performance of the kernel. Each kernel should
  *          be tested on its own, as most of our kernels should be parallel enough to use 100% of the
  *          GPU's compute capacity.  The data transfers are also profiled, the usefulness of this is
  *          determined by the author of the derived class.
+ * \example VectorAddTest.hpp
  */
 class UnitTest
 {
@@ -38,9 +40,12 @@ class UnitTest
         /// Transfer the processed data from device memory back to the host.
         virtual void transfer_DtoH() = 0;
 
-        /// Verify the correctness of the output data. This will usually involve performing the same calculations on the CPU that took place on the device.
+        /// Verify the correctness of the output data.
         virtual void verify_output()  = 0;
-    
+
+        /// Stores the result of the test.
+        int   m_iResult;
+
     private:
         /// Timing for the start of the HtoD memory transfer.
         cudaEvent_t m_eventHtoDStart;
@@ -62,9 +67,6 @@ class UnitTest
         cudaEvent_t m_eventDtoHFinish;
         /// Time duration (ms) of the DtoH memory transfer.
         float m_fDtoHElapsedTime_ms;
-
-        /// Stores the result of the test.
-        int   m_iResult;
 }
 
 #endif
