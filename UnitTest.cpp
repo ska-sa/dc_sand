@@ -16,43 +16,60 @@ UnitTest::~UnitTest()
 }
 
 
-/**
- * \details Very few assumptions are made by the base class about what the derived class
- *          is going to test. The implementation of this function could be a single, simple
- *          kernel accompanied by memory transfers, or it could be as complex as multiple 
- *          interdependent streams.
- */
 void UnitTest::run_test()
 {
     /// The derived class provides a method to generate simulated input data for the operation.
     simulate_input();
 
-    /// The operation as specified by the derived class is then executed, accompanied by some
-    /// simple CUDA profiling infrastructure.
-    cudaEventRecord(startEvent);
-    run_operation();
-    ///\todo It may be wise to make the concluding cudaDeviceSynchronize optional, so that it doesn't affect results on simple operations.
-    cudaDeviceSynchronize();
-    cudaEventRecord(stopEvent);
-    cudaEventElapsedTime(&m_fElapsedTime_ms, startEvent, stopEvent);
+    /// The input data is transferred to the device.
+    cudaEventRecord(m_eventHtoDStart);
+    transfer_HtoD();
+    cudaEventRecord(m_eventHtoDFinish);
+    cudaEventElapsedTime(&m_fHtoDElapsedTime_ms, m_eventHtoDStart, m_eventHtoDFinish);
 
-    /// The results are then checked for correctness by the host.
-    /// This method is also implemented by the derived class.
-    ///\todo Think about making the verification optional, selectable at run-time.
-    ///\todo Should there be a parameter for the tolerance of the verification? Or should that be completely handled by the derived class?
-    m_iResult = verify_output();
+
+    /// The kernel under test is executed.
+    cudaEventRecord(m_eventKernelStart);
+    run_kernel();
+    cudaEventRecord(m_eventKernelFinish);
+    cudaEventElapsedTime(&m_fKernelElapsedTime_ms, m_eventKernelStart, m_eventKernelFinish);
+
+    /// The processed data is tranferred to the host.
+    cudaEventRecord(m_eventDtoHStart);
+    transfer_DtoH();
+    cudaEventRecord(m_eventDtoHFinish);
+    cudaEventElapsedTime(&m_fDtoHElapsedTime_ms, m_eventDtoHStart, m_eventDtoHFinish);
+
+    /// The results are checked for correctness by the host.
+    verify_output();
+    ///\todo Accommodation should probably be made for tolerances - both as a pass/fail criterion,
+    ///      and for reporting how much the GPU's results diverged from the CPU's.
 }
 
-/** \details Returns the contents of m_iResult.
- *           This should have been updated by the derived class's implementation of verify_output().
- */
 int UnitTest::get_result()
 {
-    /// The variable is initialised to zero by the constructor, if it's still zero it indicates that the test
-    /// hasn't been run yet. This should give the user a warning.
     if (!m_iResult)
     {
-        std::cerr << "UnitTest hasn't been run yet!" << std::endl;  ///\todo Add a "name" parameter so that the warning that it hasn't run yet actually has meaning to the user.
+        std::cerr << "UnitTest hasn't been run yet!" << std::endl;
+        ///\todo Add a "name" parameter to the class, so that the warning that the test it hasn't run
+        ///      yet actually has meaning to the user, e.g. if a suite of tests is being processed.
     }
+
+    ///\retval  1 The test has passed.
+    ///\retval -1 The test has failed.
+    ///\retval  0 The test has not yet completed.
     return m_iResult;
+}
+
+
+float UnitTest::get_time()
+{
+    ///\todo Include some reporting around the sizes of memory transfers (i.e. data rates) and probably FLOPS too.
+    std::cout << "HtoD:\t\t" << m_fHtoDElapsedTime_ms << " ms\n";
+    std::cout << "Kernel:\t\t" << m_fKernelElapsedTime_ms << " ms\n";
+    std::cout << "DtoH:\t\t" << m_fDtoHElapsedTime_ms << " ms\n";
+
+    ///\return The time taken for the test to execute, including transfers to and from device, but excluding the
+    ///        time taken by the CPU to generate simulated data or verify the output.
+    return m_fHtoDElapsedTime_ms + m_fKernelElapsedTime_ms + m_fDtoHElapsedTime_ms;
 }
