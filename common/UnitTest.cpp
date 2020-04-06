@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <cuda.h>
+#include <cuda_runtime_api.h>
 
 UnitTest::UnitTest() : m_iResult(0)
 {

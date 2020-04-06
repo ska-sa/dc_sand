@@ -10,7 +10,7 @@ TARGET = VectorAddTest
 INCDIR := ../common
 
 CUDADIR := /usr/local/cuda
-CUDAINC := -I$CUDADIR)/include -lcuda
+CUDAINC := -I$(CUDADIR)/include -lcuda
 
 OBJDIR := obj
 

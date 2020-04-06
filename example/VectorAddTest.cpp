@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <cuda.h>
+#include <cuda_runtime_api.h>
 
 #include "VectorAddTest.hpp"
 
@@ -35,8 +36,8 @@ void VectorAddTest::simulate_input()
 {
     for (size_t i = 0; i < m_uVectorLength; i++)
     {
-        m_piVectorA = i;
-        m_piVectorB = m_uVectorLength - i;
+        m_piHVectorA[i] = i;
+        m_piHVectorB[i] = m_uVectorLength - i;
     }
 }
 
@@ -66,7 +67,7 @@ void VectorAddTest::run_kernel()
     //This example is nearly trivial since it needs virtually no memory, but this can often be
     //fairly critical for good utilisation of the GPU.
     int blockSize = 256;
-    int numBlocks = (N + blockSize - 1) / blockSize;
+    int numBlocks = (m_uVectorLength + blockSize - 1) / blockSize;
     kernel_vector_add<< numBlocks, blockSize >>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
 }
 

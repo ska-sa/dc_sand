@@ -67,6 +67,6 @@ class UnitTest
         cudaEvent_t m_eventDtoHFinish;
         /// Time duration (ms) of the DtoH memory transfer.
         float m_fDtoHElapsedTime_ms;
-}
+};
 
 #endif
