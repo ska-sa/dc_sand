@@ -8,5 +8,8 @@ int main()
     VectorAddTest myVectorAddTest(uVectorLength);
     myVectorAddTest.run_test();
 
+    std::cout << myVectorAddTest.get_result() << "\n";
+    myVectorAddTest.get_time();
+
     return 0;
 }

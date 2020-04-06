@@ -1,6 +1,7 @@
 #ifndef __TEST_HPP__
 #define __TEST_HPP__
 
+#include <cuda_runtime_api.h>
 
 /**\class UnitTest
  * \brief   Automated unit tests

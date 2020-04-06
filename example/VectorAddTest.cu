@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cstdint>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
@@ -53,7 +54,7 @@ void VectorAddTest::transfer_HtoD()
 //Kernel adds A and B, storing the result to C.
 __global__ void kernel_vector_add(int *A, int *B, int *C, size_t N)
 {
-    int tid = blockIdx.x*blockDimx.x + threadIdx.x;
+    int tid = blockIdx.x*blockDim.x + threadIdx.x;
     if (tid < N) //in case the size of the operation doesn't fit neatly into block size.
     {
         C[tid] = A[tid] + B[tid];
@@ -68,7 +69,7 @@ void VectorAddTest::run_kernel()
     //fairly critical for good utilisation of the GPU.
     int blockSize = 256;
     int numBlocks = (m_uVectorLength + blockSize - 1) / blockSize;
-    kernel_vector_add<< numBlocks, blockSize >>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
+    kernel_vector_add<<< numBlocks, blockSize >>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
 }
 
 
@@ -85,6 +86,7 @@ void VectorAddTest::verify_output()
         if (m_piHVectorC[i] != (int) m_uVectorLength)
         {
             m_iResult = -1;
+            std::cout << "Element " << i << " not equal. Expected " << m_uVectorLength << " but got " << m_piHVectorC[i] << "!\n";
             return;
         }
     }

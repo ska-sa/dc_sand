@@ -1,19 +1,27 @@
-#include "UnitTest.hpp"
-
 #include <iostream>
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#include "UnitTest.hpp"
+
 UnitTest::UnitTest() : m_iResult(0)
 {
-    cudaEventCreate(m_StartEvent);
-    cudaEventCreate(m_StopEvent);
+    cudaEventCreate(&m_eventHtoDStart);
+    cudaEventCreate(&m_eventHtoDFinish);
+    cudaEventCreate(&m_eventKernelStart);
+    cudaEventCreate(&m_eventKernelFinish);
+    cudaEventCreate(&m_eventDtoHStart);
+    cudaEventCreate(&m_eventDtoHFinish);
 }
 
 UnitTest::~UnitTest()
 {
-    cudaEventDestroy(m_StartEvent);
-    cudaEventDestroy(m_StopEvent);
+    cudaEventDestroy(m_eventHtoDStart);
+    cudaEventDestroy(m_eventHtoDFinish);
+    cudaEventDestroy(m_eventKernelStart);
+    cudaEventDestroy(m_eventKernelFinish);
+    cudaEventDestroy(m_eventDtoHStart);
+    cudaEventDestroy(m_eventDtoHFinish);
 }
 
 
