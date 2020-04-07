@@ -14,15 +14,12 @@ CUDAINC := -I$(CUDADIR)/include -lcuda
 
 OBJDIR := obj
 
-all: directories $(TARGET)
+all: $(TARGET)
 
 remake: clean all
 
-directories:
-	@mkdir -p $(OBJDIR)
-
 $(TARGET):
-	$(CC) -o $(TARGET) -I $(INCDIR) $(CUDAINC) *.cpp
+	$(CC) -o $(TARGET) -I $(INCDIR) $(CUDAINC) -L $(INCDIR) *.cpp *.cu $(INCDIR)/*.cpp
 
 clean:
-	rm -f VectorAddTest $(OBJDIR)/*.o
+	rm -f VectorAddTest *.o

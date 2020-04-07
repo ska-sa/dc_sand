@@ -34,6 +34,7 @@ void UnitTest::run_test()
     cudaEventRecord(m_eventHtoDStart);
     transfer_HtoD();
     cudaEventRecord(m_eventHtoDFinish);
+    cudaEventSynchronize(m_eventHtoDFinish); //call this to make sure the event is recorded properly!
     cudaEventElapsedTime(&m_fHtoDElapsedTime_ms, m_eventHtoDStart, m_eventHtoDFinish);
 
 
@@ -41,12 +42,14 @@ void UnitTest::run_test()
     cudaEventRecord(m_eventKernelStart);
     run_kernel();
     cudaEventRecord(m_eventKernelFinish);
+    cudaEventSynchronize(m_eventKernelFinish);
     cudaEventElapsedTime(&m_fKernelElapsedTime_ms, m_eventKernelStart, m_eventKernelFinish);
 
     /// The processed data is tranferred to the host.
     cudaEventRecord(m_eventDtoHStart);
     transfer_DtoH();
     cudaEventRecord(m_eventDtoHFinish);
+    cudaEventSynchronize(m_eventDtoHFinish);
     cudaEventElapsedTime(&m_fDtoHElapsedTime_ms, m_eventDtoHStart, m_eventDtoHFinish);
 
     /// The results are checked for correctness by the host.
