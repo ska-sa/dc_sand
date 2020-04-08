@@ -64,13 +64,13 @@ void VectorAddTest::transfer_HtoD()
 
 
 //Kernel adds A and B, storing the result to C.
-__global__ void kernel_vector_add(int *A, int *B, int *C, size_t N)
+__global__ void kernel_vector_add(int *piVectorA, int *piVectorB, int *piVectorC, size_t ulVectorLength)
 {
     int tid = blockIdx.x*blockDim.x + threadIdx.x;
-    if (tid < N) //in case the size of the operation doesn't fit neatly into block size.
+    if (tid < ulVectorLength) //in case the size of the operation doesn't fit neatly into block size.
     {
         //for (int i = 0; i < 1000; i++) // To make the GPU spin for a while
-            C[tid] = A[tid] + B[tid];
+        piVectorC[tid] = piVectorA[tid] + piVectorB[tid];
     }
 }
 
