@@ -8,10 +8,12 @@
 #include <iostream>
 #include <string.h>
 
-#include "pcieRateTest.h"
+#include "pcieRateTest.hpp"
 
+/// Defines number of events to use for synchronisation
 #define NUM_SYNC_EVENTS 100
 
+/// Standard CUDA error checking wrapper function
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
@@ -22,22 +24,36 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-
+/**\class CudaPcieRateTest
+ * \brief   CUDA specific implementation of the PcieRateTest class
+ * \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
+ */
 class CudaPcieRateTest : public PcieRateTest
 {
     public:
-        CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, int64_t i64NumTransfers ,bool bH2D, bool bD2H);
+        CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, bool bH2D, bool bD2H);
+
         ~CudaPcieRateTest();
-        float transfer() override;
+
+        float transfer(int64_t i64NumTransfers) override;
+        
+        /// Static function that returns a list of CUDA enabled GPUs as well as their device id for setting the correct value m_i32DeviceId. 
         static void list_gpus();
 
     protected:
+        ///Device pointers
         int8_t * m_pi32HInput;
         int8_t * m_pi32HOutput; 
+
+        ///Host pointers
         int8_t * m_pi32DGpuArray;
 
+        /// Stream for host to device data transfers
         cudaStream_t m_streamH2D;
+        /// Stream for device to host data transfers
         cudaStream_t m_streamD2H;
+
+        /// CUDA events for timing and synchronisation across treams
         cudaEvent_t m_eventStart;
         cudaEvent_t m_eventEnd;
         cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];

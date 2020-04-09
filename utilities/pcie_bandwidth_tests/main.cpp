@@ -8,7 +8,7 @@
 #include <string>
 #include <limits>
 
-#include "cudaPcieRateTest.h"
+#include "cudaPcieRateTest.hpp"
 
 #define DEFAULT_NUM_TRANSFERS 5000
 #define DEFAULT_NUM_FRAMES 100
@@ -18,6 +18,8 @@
 int main(int argc, char** argv){
     std::cout << "PCIe Bandwidth Tests" << std::endl;
 
+
+    /// Set up command line arguments
     boost::program_options::options_description desc("Allowed options");
     desc.add_options()
         ("help,h", "Produce help message")
@@ -34,6 +36,7 @@ int main(int argc, char** argv){
     boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), clVariableMap);
     boost::program_options::notify(clVariableMap);
 
+    /// Retrieve and sanitise command line arguments
     if (clVariableMap.count("help"))
     {
         std::cout << desc << "\n";
@@ -65,6 +68,12 @@ int main(int argc, char** argv){
     }
 
     int64_t i64NumTests = clVariableMap["num_tests"].as<int64_t>();
+    if(i64NumTests < 1)
+    {
+        i64NumTests=std::numeric_limits<int64_t>::max();
+        std::cout << "Running infinitly" << std::endl;
+    }
+
     int64_t i64NumTransfers = clVariableMap["num_transfers_per_test"].as<int64_t>();
     int64_t i64FrameSize_bytes = clVariableMap["frame_size"].as<int64_t>()*1000*1000;
     int32_t gpuId = clVariableMap["use_gpu_id"].as<int32_t>();
@@ -75,17 +84,14 @@ int main(int argc, char** argv){
         return -1;
     }
     
-    CudaPcieRateTest cudaPcieRateTest(gpuId,DEFAULT_NUM_FRAMES,i64FrameSize_bytes,i64NumTransfers, bH2D, bD2H);
+    /// Initialise PCIe test
+    CudaPcieRateTest cudaPcieRateTest(gpuId,DEFAULT_NUM_FRAMES,i64FrameSize_bytes, bH2D, bD2H);
 
-    if(i64NumTests < 1)
-    {
-        i64NumTests=std::numeric_limits<int64_t>::max();
-        std::cout << "Running infinitly" << std::endl;
-    }
 
+    /// Run PCIe rate tests
     for (int64_t i64TestIndex = 0; i64TestIndex < i64NumTests; i64TestIndex++)
     {
-        float fTransferRate_Gbps = cudaPcieRateTest.transfer();
+        float fTransferRate_Gbps = cudaPcieRateTest.transfer(i64NumTransfers);
         std::cout << "Test " << i64TestIndex+1 << " of " << i64NumTests << ": " << fTransferRate_Gbps << " Gbps " << std::endl;
     }
 
