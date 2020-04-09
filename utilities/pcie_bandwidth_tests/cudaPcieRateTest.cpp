@@ -1,15 +1,10 @@
 #include "cudaPcieRateTest.h"
 
-cudaPcieRateTest::cudaPcieRateTest(int32_t i32GpuId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, int64_t i64NumTransfers ,bool bH2D, bool bD2H):
-    m_i32GpuId(i32GpuId),
-    m_i64NumFrames(i64NumFrames),
-    m_i64FrameSizeBytes(i64FrameSizeBytes),
-    m_i64NumTransfers(i64NumTransfers),
-    m_bH2D(bH2D),
-    m_bD2H(bD2H)
+CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, int64_t i64NumTransfers ,bool bH2D, bool bD2H):
+    PcieRateTest(i32DeviceId ,i64NumFrames ,i64FrameSizeBytes, i64NumTransfers, bH2D, bD2H)
 {   
     m_i64ArraySize_bytes = m_i64NumFrames*m_i64FrameSizeBytes;
-    gpuErrchk(cudaSetDevice(m_i32GpuId));
+    gpuErrchk(cudaSetDevice(m_i32DeviceId));
     gpuErrchk(cudaMalloc(&m_pi32DGpuArray, m_i64ArraySize_bytes));
     if(m_bH2D == 1)
     {
@@ -35,9 +30,9 @@ cudaPcieRateTest::cudaPcieRateTest(int32_t i32GpuId, int64_t i64NumFrames, int64
     gpuErrchk(cudaEventCreate(&m_eventEnd));
 }
 
-cudaPcieRateTest::~cudaPcieRateTest()
+CudaPcieRateTest::~CudaPcieRateTest()
 {
-    gpuErrchk(cudaSetDevice(m_i32GpuId));
+    gpuErrchk(cudaSetDevice(m_i32DeviceId));
     gpuErrchk(cudaFree(m_pi32DGpuArray));
     if(m_bH2D == 1)
     {
@@ -62,8 +57,8 @@ cudaPcieRateTest::~cudaPcieRateTest()
     }
 }
 
-cudaPcieRateTest::TransferReturn cudaPcieRateTest::transfer(){
-    gpuErrchk(cudaSetDevice(m_i32GpuId));
+float CudaPcieRateTest::transfer(){
+    gpuErrchk(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamH2D));
     }else{
@@ -104,9 +99,22 @@ cudaPcieRateTest::TransferReturn cudaPcieRateTest::transfer(){
     float fElapsedTime_ms;
     float fTotalTransfer_bytes = (int64_t)m_i64FrameSizeBytes*m_i64NumTransfers;
     gpuErrchk(cudaEventElapsedTime(&fElapsedTime_ms,m_eventStart,m_eventEnd));
-    return TransferReturn{fTotalTransfer_bytes/1000.0/1000.0/1000.0,fElapsedTime_ms/1000.0,(fTotalTransfer_bytes/1000.0/1000.0/1000.0*8.0)/(fElapsedTime_ms/1000.0)};
-    //std::cout << "\tTotal Time: " << fElapsedTime_ms/1000.0 << " s" << std::endl; 
-    //std::cout << "\tTransfer Size: " << fTotalTransfer_bytes/1000.0/1000.0/1000.0 << " Gb" << std::endl; 
-    //std::cout << "\tData Rate: " << (fTotalTransfer_bytes/1000.0/1000.0/1000.0*8.0)/(fElapsedTime_ms/1000.0) << " Gbps" << std::endl; 
 
+    float fTotalTransfer_Gbytes = fTotalTransfer_bytes/1000.0/1000.0/1000.0;
+    float fTransferTime_s = fElapsedTime_ms/1000.0;
+    float fTransferRate_Gbps = fTotalTransfer_Gbytes/fTransferTime_s*8.0;
+    return fTransferRate_Gbps;
+}
+
+void CudaPcieRateTest::list_gpus()
+{
+    int i32DevicesCount;
+    cudaGetDeviceCount(&i32DevicesCount);
+    std::cout << "Available Cuda Devices:" <<std::endl;
+    for(int int32DeviceIndex = 0; int32DeviceIndex < i32DevicesCount; ++int32DeviceIndex)
+    {
+        cudaDeviceProp deviceProperties;
+        cudaGetDeviceProperties(&deviceProperties, int32DeviceIndex);
+        std::cout << "\tDevice ID: " << int32DeviceIndex << " Device: " << deviceProperties.name << " PCIe Domain ID: " << deviceProperties.pciDomainID << std::endl;
+    }
 }

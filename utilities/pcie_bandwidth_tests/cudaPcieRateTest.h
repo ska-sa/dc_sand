@@ -8,6 +8,8 @@
 #include <iostream>
 #include <string.h>
 
+#include "pcieRateTest.h"
+
 #define NUM_SYNC_EVENTS 100
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -20,38 +22,25 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-class cudaPcieRateTest
+
+class CudaPcieRateTest : public PcieRateTest
 {
-private:
-    int32_t m_i32GpuId;
+    public:
+        CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, int64_t i64NumTransfers ,bool bH2D, bool bD2H);
+        ~CudaPcieRateTest();
+        float transfer() override;
+        static void list_gpus();
 
-    int64_t m_i64NumFrames;
-    int64_t m_i64FrameSizeBytes;
-    int64_t m_i64NumTransfers;
-    int64_t m_i64ArraySize_bytes;
+    protected:
+        int8_t * m_pi32HInput;
+        int8_t * m_pi32HOutput; 
+        int8_t * m_pi32DGpuArray;
 
-    bool m_bH2D;
-    bool m_bD2H;
-
-    int8_t * m_pi32HInput;
-    int8_t * m_pi32HOutput; 
-    int8_t * m_pi32DGpuArray;
-
-    cudaStream_t m_streamH2D;
-    cudaStream_t m_streamD2H;
-    cudaEvent_t m_eventStart;
-    cudaEvent_t m_eventEnd;
-    cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];
-    
-public:
-    struct TransferReturn {
-        float fTransferSize_Gb;
-        float fTransferTime_s;
-        float fDataRate_Gbps;
-    };
-    cudaPcieRateTest(int32_t i32GpuId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, int64_t i64NumTransfers ,bool bH2D, bool bD2H);
-    ~cudaPcieRateTest();
-    cudaPcieRateTest::TransferReturn transfer();
+        cudaStream_t m_streamH2D;
+        cudaStream_t m_streamD2H;
+        cudaEvent_t m_eventStart;
+        cudaEvent_t m_eventEnd;
+        cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];
 };
 
 #endif

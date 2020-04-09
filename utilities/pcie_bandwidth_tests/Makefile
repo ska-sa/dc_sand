@@ -1,4 +1,4 @@
-OBJECTS= pcieBandwidth.o cudaPcieRateTest.o
+OBJECTS= pcieRateTest.o cudaPcieRateTest.o  main.o
 
 CUDA= /usr/local/cuda-10.1
 
