@@ -9,6 +9,7 @@
 #include <limits>
 
 #include "cudaPcieRateTest.hpp"
+#include "openclPcieRateTest.hpp"
 
 #define DEFAULT_NUM_TRANSFERS 5000
 #define DEFAULT_NUM_FRAMES 100
@@ -16,7 +17,9 @@
 #define DEFAULT_FRAME_SIZE_BYTES 5000000
 
 int main(int argc, char** argv){
+    std::cout << "================================================================================" << std::endl;
     std::cout << "PCIe Bandwidth Tests" << std::endl;
+    std::cout << std::endl;
 
 
     /// Set up command line arguments
@@ -46,6 +49,8 @@ int main(int argc, char** argv){
     if (clVariableMap.count("list_gpus"))
     {
         CudaPcieRateTest::list_gpus();
+        std::cout << std::endl;
+        OpenCLPcieRateTest::list_opencl_devices();
         return 1;
     }
 
@@ -79,12 +84,14 @@ int main(int argc, char** argv){
     int32_t gpuId = clVariableMap["use_gpu_id"].as<int32_t>();
     int i32DevicesCount;
     cudaGetDeviceCount(&i32DevicesCount);
+    std::cout << "Allocated " << i64FrameSize_bytes*DEFAULT_NUM_FRAMES/1000.0/1000.0/1000.0 << " GB of device memory." << std::endl;
     if(gpuId >= i32DevicesCount){
         std::cout << "ERROR: Invalid device index specified. Use --list_gpus flag to view valid indexes " << std::endl;
         return -1;
     }
     
     /// Initialise PCIe test
+    //OpenCLPcieRateTest openCLPcieRateTest(gpuId,DEFAULT_NUM_FRAMES,i64FrameSize_bytes, bH2D, bD2H);
     CudaPcieRateTest cudaPcieRateTest(gpuId,DEFAULT_NUM_FRAMES,i64FrameSize_bytes, bH2D, bD2H);
 
 

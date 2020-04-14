@@ -125,6 +125,6 @@ void CudaPcieRateTest::list_gpus()
     {
         cudaDeviceProp deviceProperties;
         cudaGetDeviceProperties(&deviceProperties, int32DeviceIndex);
-        std::cout << "\tDevice ID: " << int32DeviceIndex << " Device: " << deviceProperties.name << " PCIe Domain ID: " << deviceProperties.pciDomainID << std::endl;
+        std::cout << "\tDevice ID: " << int32DeviceIndex << ". Device: " << deviceProperties.name << " PCIe Domain ID: " << deviceProperties.pciDomainID << std::endl;
     }
 }
