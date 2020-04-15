@@ -2,7 +2,7 @@
 
 # Compiler and linker
 CC := nvcc
-CCFLAGS := -arch=sm70 --ptxas-options=-v
+CCFLAGS := -arch=sm_70 --ptxas-options=-v
 
 # Target executable program
 TARGET = VectorAddTest
@@ -19,7 +19,7 @@ all: $(TARGET)
 remake: clean all
 
 $(TARGET):
-	$(CC) -o $(TARGET) -I $(INCDIR) $(CUDAINC) -L $(INCDIR) *.cpp *.cu $(INCDIR)/*.cpp
+	$(CC) $(CCFLAGS) -o $(TARGET) -I $(INCDIR) $(CUDAINC) -L $(INCDIR) *.cpp *.cu $(INCDIR)/*.cpp
 
 clean:
 	rm -f VectorAddTest *.o

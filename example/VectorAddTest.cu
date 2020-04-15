@@ -3,44 +3,35 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#include "Utils.hpp"
 #include "VectorAddTest.hpp"
 
-
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-   if (code != cudaSuccess) 
-   {
-      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}
 
 /// The constructor adds a parameter which assigns the size of the vectors.
 VectorAddTest::VectorAddTest(size_t uVectorLength) : m_uVectorLength(uVectorLength)
 {
     /// Turns out that using pinned host memory is MUCH faster than the non-pinned variety.
     /// This sped things up by a factor of about 3 on my tests on qgpu02.
-    cudaMallocHost((void**)&m_piHVectorA, sizeof(*m_piHVectorA)*m_uVectorLength);
-    cudaMallocHost((void**)&m_piHVectorB, sizeof(*m_piHVectorB)*m_uVectorLength);
-    cudaMallocHost((void**)&m_piHVectorC, sizeof(*m_piHVectorC)*m_uVectorLength);
+    GPU_ERRCHK(cudaMallocHost((void**)&m_piHVectorA, sizeof(*m_piHVectorA)*m_uVectorLength));
+    GPU_ERRCHK(cudaMallocHost((void**)&m_piHVectorB, sizeof(*m_piHVectorB)*m_uVectorLength));
+    GPU_ERRCHK(cudaMallocHost((void**)&m_piHVectorC, sizeof(*m_piHVectorC)*m_uVectorLength));
 
-    gpuErrchk(cudaMalloc((void **) &m_piDVectorA, m_uVectorLength*sizeof(*m_piDVectorA)));
-    gpuErrchk(cudaMalloc((void **) &m_piDVectorB, m_uVectorLength*sizeof(*m_piDVectorB)));
-    gpuErrchk(cudaMalloc((void **) &m_piDVectorC, m_uVectorLength*sizeof(*m_piDVectorC)));
+    GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorA, m_uVectorLength*sizeof(*m_piDVectorA)));
+    GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorB, m_uVectorLength*sizeof(*m_piDVectorB)));
+    GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorC, m_uVectorLength*sizeof(*m_piDVectorC)));
 }
 
 
 /// The destructor just cleans up.
 VectorAddTest::~VectorAddTest()
 {
-    cudaFree(m_piHVectorA);
-    cudaFree(m_piHVectorB);
-    cudaFree(m_piHVectorC);
+    GPU_ERRCHK(cudaFree(m_piHVectorA));
+    GPU_ERRCHK(cudaFree(m_piHVectorB));
+    GPU_ERRCHK(cudaFree(m_piHVectorC));
 
-    cudaFree(m_piDVectorA);
-    cudaFree(m_piDVectorB);
-    cudaFree(m_piDVectorC);
+    GPU_ERRCHK(cudaFree(m_piDVectorA));
+    GPU_ERRCHK(cudaFree(m_piDVectorB));
+    GPU_ERRCHK(cudaFree(m_piDVectorC));
 }
 
 
@@ -58,8 +49,8 @@ void VectorAddTest::simulate_input()
 /// Simple transfer to device memory.
 void VectorAddTest::transfer_HtoD()
 {
-    gpuErrchk(cudaMemcpy(m_piDVectorA, m_piHVectorA, m_uVectorLength*sizeof(*m_piHVectorA), cudaMemcpyHostToDevice));
-    gpuErrchk(cudaMemcpy(m_piDVectorB, m_piHVectorB, m_uVectorLength*sizeof(*m_piHVectorA), cudaMemcpyHostToDevice));
+    GPU_ERRCHK(cudaMemcpy(m_piDVectorA, m_piHVectorA, m_uVectorLength*sizeof(*m_piHVectorA), cudaMemcpyHostToDevice));
+    GPU_ERRCHK(cudaMemcpy(m_piDVectorB, m_piHVectorB, m_uVectorLength*sizeof(*m_piHVectorA), cudaMemcpyHostToDevice));
 }
 
 
@@ -83,13 +74,13 @@ void VectorAddTest::run_kernel()
     int blockSize = 256;
     int numBlocks = (m_uVectorLength + blockSize - 1) / blockSize;
     kernel_vector_add<<< numBlocks, blockSize >>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
-    gpuErrchk(cudaGetLastError());
+    GPU_ERRCHK(cudaGetLastError());
 }
 
 
 void VectorAddTest::transfer_DtoH()
 {
-    gpuErrchk(cudaMemcpy(m_piHVectorC, m_piDVectorC, m_uVectorLength*sizeof(*m_piHVectorC), cudaMemcpyDeviceToHost));
+    GPU_ERRCHK(cudaMemcpy(m_piHVectorC, m_piDVectorC, m_uVectorLength*sizeof(*m_piHVectorC), cudaMemcpyDeviceToHost));
 }
 
 
