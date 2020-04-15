@@ -79,7 +79,32 @@ float UnitTest::get_time()
     ///\todo Include some reporting around the sizes of memory transfers (i.e. data rates) and probably FLOPS too.
     std::cout << "HtoD:\t\t" << m_fHtoDElapsedTime_ms << " ms\n";
     std::cout << "Kernel:\t\t" << m_fKernelElapsedTime_ms << " ms\n";
-    std::cout << "DtoH:\t\t" << m_fDtoHElapsedTime_ms << " ms\n";
+    std::cout << "DtoH:\t\t" << m_fDtoHElapsedTime_ms << " ms\n\n";
+
+    float fGpuUtilisationRatio;
+    if (m_fHtoDElapsedTime_ms > m_fKernelElapsedTime_ms && m_fHtoDElapsedTime_ms > m_fDtoHElapsedTime_ms)
+    {
+        std::cout << "Host to device transfer is the limiting factor.\n";
+    }
+    else if (m_fDtoHElapsedTime_ms > m_fKernelElapsedTime_ms && m_fDtoHElapsedTime_ms > m_fHtoDElapsedTime_ms)
+    {
+        std::cout << "Device to host transfer is the limiting factor.\n";
+    }
+    else if (m_fKernelElapsedTime_ms > m_fHtoDElapsedTime_ms && m_fKernelElapsedTime_ms > m_fDtoHElapsedTime_ms)
+    {
+        std::cout << "Kernel execution is the limiting factor.\n";
+    }
+
+    if (m_fHtoDElapsedTime_ms > m_fDtoHElapsedTime_ms)
+    {
+        fGpuUtilisationRatio = m_fKernelElapsedTime_ms / m_fHtoDElapsedTime_ms;
+    }
+    else
+    {
+        fGpuUtilisationRatio = m_fKernelElapsedTime_ms / m_fDtoHElapsedTime_ms;
+    }
+
+    std::cout << "GPU Utilisation: " << fGpuUtilisationRatio*100.0f << "%\n";
 
     ///\return The time taken for the test to execute, including transfers to and from device, but excluding the
     ///        time taken by the CPU to generate simulated data or verify the output.
