@@ -92,7 +92,11 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
         }
         
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
-            cudaStreamSynchronize(m_streamD2H);
+            if(m_bD2H == 1){
+                gpuErrchk(cudaStreamSynchronize(m_streamD2H));
+            }else{
+                gpuErrchk(cudaStreamSynchronize(m_streamH2D));
+            }
         }
     }
 
@@ -152,7 +156,11 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
         }
         
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
-            cudaStreamSynchronize(m_streamD2H);
+            if(m_bD2H == 1){
+                gpuErrchk(cudaStreamSynchronize(m_streamD2H));
+            }else{
+                gpuErrchk(cudaStreamSynchronize(m_streamH2D));
+            }
         }
         i64NumTransfers++;
         auto now = std::chrono::high_resolution_clock::now();
