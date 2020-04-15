@@ -21,9 +21,6 @@
 int main(int argc, char** argv){
     omp_set_nested(1);
 
-    std::cout << "================================================================================" << std::endl;
-    std::cout << "PCIe Bandwidth Tests" << std::endl;
-
     /// Set up command line arguments
     boost::program_options::options_description desc("Allowed options");
     desc.add_options()
@@ -31,6 +28,7 @@ int main(int argc, char** argv){
         ("mem_bw_test,b", "Perform memcpy test")
         ("h2d,d", "Enable host to device stream")
         ("d2h,s", "Enable device to host stream")
+        ("csv,c", "Disables all human readable text and instead outputs the data in a csv format for easier exporting to external programs")
         ("list_gpus,l", "List GPUs available on the current server")
         ("gpu_id_mask,g", boost::program_options::value<int32_t>()->default_value(0) ,"Mask to set which GPUs to use e.g. 0101 will use GPU 0 and 2 while skipping 1 and 3")
         ("min_threads,m", boost::program_options::value<int64_t>()->default_value(0), "Minimum number of performing memcopies")
@@ -44,7 +42,18 @@ int main(int argc, char** argv){
     boost::program_options::store(boost::program_options::parse_command_line(argc, argv, desc), clVariableMap);
     boost::program_options::notify(clVariableMap);
     
-    std::cout << std::endl;
+    bool csvMode = false;
+    if (clVariableMap.count("csv"))
+    {
+        csvMode=true;
+    }
+
+    if(!csvMode)
+    {
+        std::cout << "================================================================================" << std::endl;
+        std::cout << "PCIe Bandwidth Tests" << std::endl;
+        std::cout << std::endl;
+    }
     // Retrieve and sanitise command line arguments
     if (clVariableMap.count("help"))
     {
@@ -79,7 +88,10 @@ int main(int argc, char** argv){
             std::cout << "ERROR: Number of threads needs to be <=0" << std::endl;
             return -1;
         }
-        std::cout << "Testing System RAM Bandwidth with a thread count ranging from " << i64MinThreads << " to " << i64MaxThreads << std::endl;
+        if(!csvMode)
+        {
+            std::cout << "Testing System RAM Bandwidth with a thread count ranging from " << i64MinThreads << " to " << i64MaxThreads << std::endl;
+        }
     }else{
         i64MinThreads = 1;
         i64MaxThreads = 1;
@@ -97,12 +109,18 @@ int main(int argc, char** argv){
         if (clVariableMap.count("h2d"))
         {
             bH2D=true;
-            std::cout << "Enabled transfers from host to device" << "\n";
+            if(!csvMode)
+            {
+                std::cout << "Enabled transfers from host to device" << "\n";
+            }
         }
         if (clVariableMap.count("d2h"))
         {
             bD2H=true;
-            std::cout << "Enabled transfers from device to host" << "\n";
+            if(!csvMode)
+            {
+                std::cout << "Enabled transfers from device to host" << "\n";
+            }
         }
         if(!bD2H && !bH2D)
         {
@@ -115,12 +133,18 @@ int main(int argc, char** argv){
             uint8_t u8BitSlice = pbUseGPU%10;
             pbUseGPU = pbUseGPU/10;
             if(u8BitSlice == 1){
-                std::cout << "Using GPU Index: " << i << std::endl;
-                pbGPUMask[i] = true;
+                if(!csvMode)
+                {   
+                    std::cout << "Using GPU Index: " << i << std::endl;
+                    pbGPUMask[i] = true;
+                }
             }
         }
         pbUseGPU = 1;
-        std::cout << "Allocated " << DEFAULT_FRAME_SIZE_BYTES*DEFAULT_NUM_FRAMES/1000.0/1000.0/1000.0 << " GB of device memory per GPU." << std::endl;
+        if(!csvMode)
+        {
+            std::cout << "Allocated " << DEFAULT_FRAME_SIZE_BYTES*DEFAULT_NUM_FRAMES/1000.0/1000.0/1000.0 << " GB of device memory per GPU." << std::endl;
+        }
     }
 
     if(pbUseGPU==0 && performMemBWTest==false){
@@ -130,16 +154,19 @@ int main(int argc, char** argv){
         
     
     // Begin Bandwidth Test
-    std::cout << std::setw(20) << "No. of Threads" << std::setprecision(2) 
-        << std::setw(20) << "Mem BW GBps";
-    for (size_t j = 0; j < i32DevicesCount; j++)
+    if(!csvMode)
     {
-        if(pbGPUMask[j] == true)
+        std::cout << std::setw(20) << "No. of Threads" << std::setprecision(2) 
+            << std::setw(20) << "Mem BW GBps";
+        for (size_t j = 0; j < i32DevicesCount; j++)
         {
-            std::cout << std::setw(11) << "GPU " << std::setw(1) << std::setprecision(1) << j << " PCI BW(Gbps)";    
+            if(pbGPUMask[j] == true)
+            {
+                std::cout << std::setw(11) << "GPU " << std::setw(1) << std::setprecision(1) << j << " PCI BW(Gbps)";    
+            }
         }
+        std::cout << std::endl; 
     }
-    std::cout << std::endl; 
 
     for (size_t i = i64MinThreads; i < i64MaxThreads+1; i++)
     {
@@ -170,21 +197,34 @@ int main(int argc, char** argv){
             }    
         }
 
-        std::cout << std::setw(20) << i << std::setprecision(2) 
-            << std::setw(20) << std::setprecision(6) << fMemRate_GBps;
+        if(!csvMode)
+        {
+            std::cout << std::setw(20) << i << std::setprecision(2) 
+                << std::setw(20) << std::setprecision(6) << fMemRate_GBps;
+        }else{
+            std::cout << i << "," << fMemRate_GBps;
+        }
         for (size_t j = 0; j < i32DevicesCount; j++)
         {
             if(pbGPUMask[j] == true)
             {
-                std::cout << std::setw(25) << std::setprecision(6) << fPcieRate_Gbps[0];
+                if(!csvMode)
+                {
+                    std::cout << std::setw(25) << std::setprecision(6) << fPcieRate_Gbps[0];
+                }else{
+                    std::cout << "," << fPcieRate_Gbps[0];
+                }
             }
         }
         std::cout << std::endl; 
     }
     
-    std::cout << std::endl;
-    std::cout << "Done" << std::endl;
-    std::cout << "================================================================================" << std::endl;
+    if(!csvMode)
+    {
+        std::cout << std::endl;
+        std::cout << "Done" << std::endl;
+        std::cout << "================================================================================" << std::endl;
+    }
     return 0;
 }
 
