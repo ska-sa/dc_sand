@@ -10,7 +10,8 @@ timestamp=$(date +"%Y%m%d_%H%M")
 gpuMask_dec=0
 for i in `seq 0 $numGpus`
 do  
-    baseName="BWTests_${timestamp}_${i}GPUs"
+    hostname="$(cat /proc/sys/kernel/hostname)"
+    baseName="${hostname}_BWTests_${timestamp}_${i}GPUs"
     echo Performing Test: $baseName
     gpuMask_bin=$(echo "obase=2;$gpuMask_dec" | bc)
     if [[ $i -ne 0 ]]; then 
