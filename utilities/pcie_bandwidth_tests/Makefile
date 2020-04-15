@@ -1,6 +1,6 @@
 OBJECTS= pcieRateTest.o cudaPcieRateTest.o openclPcieRateTest.o memRateTest.o main.o 
 
-CUDA= /usr/local/cuda-10.1
+CUDA= /usr/local/cuda
 
 INCLUDES= -I$(CUDA)/include
 #LIBRARIES= -lcuda -lcublas 

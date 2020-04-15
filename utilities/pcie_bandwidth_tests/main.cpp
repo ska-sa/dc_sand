@@ -120,7 +120,13 @@ int main(int argc, char** argv){
                 pbGPUMask[i] = true;
             }
         }
+        pbUseGPU = 1;
         std::cout << "Allocated " << DEFAULT_FRAME_SIZE_BYTES*DEFAULT_NUM_FRAMES/1000.0/1000.0/1000.0 << " GB of device memory per GPU." << std::endl;
+    }
+
+    if(pbUseGPU==0 && performMemBWTest==false){
+        std::cout << "ERROR: Need to use at least -m or -g 1 flags. At the moment no tests are specified. " << std::endl;
+        return -1;
     }
         
     
