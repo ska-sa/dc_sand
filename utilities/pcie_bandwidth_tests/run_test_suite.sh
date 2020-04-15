@@ -14,11 +14,11 @@ do
     echo Performing Test: $baseName
     gpuMask_bin=$(echo "obase=2;$gpuMask_dec" | bc)
     if [[ $i -ne 0 ]]; then 
-        ./test_bandwidth -g  $gpuMask_bin $PCIeDirFlags -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_bidir.txt
-        ./test_bandwidth -g  $gpuMask_bin -d -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_D2H.txt
-        ./test_bandwidth -g  $gpuMask_bin -s -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_H2D.txt
+        ./test_bandwidth -g  $gpuMask_bin $PCIeDirFlags -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_bidir.csv
+        ./test_bandwidth -g  $gpuMask_bin -d -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_D2H.csv
+        ./test_bandwidth -g  $gpuMask_bin -s -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}_pcie_H2D.csv
     else
-        ./test_bandwidth -g  $gpuMask_bin $PCIeDirFlags -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}.txt
+        ./test_bandwidth -g  $gpuMask_bin $PCIeDirFlags -t $SecondsPerTest -b -m 0 -M $MaxThreads -c | tee ${baseName}.csv
     fi
     gpuMask_dec=$((($gpuMask_dec<<1)+1))
 done
