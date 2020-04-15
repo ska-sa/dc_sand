@@ -31,9 +31,9 @@ VectorAddTest::VectorAddTest(size_t uVectorLength) : m_uVectorLength(uVectorLeng
 /// The destructor just cleans up.
 VectorAddTest::~VectorAddTest()
 {
-    GPU_ERRCHK(cudaFree(m_piHVectorA));
-    GPU_ERRCHK(cudaFree(m_piHVectorB));
-    GPU_ERRCHK(cudaFree(m_piHVectorC));
+    GPU_ERRCHK(cudaFreeHost(m_piHVectorA));
+    GPU_ERRCHK(cudaFreeHost(m_piHVectorB));
+    GPU_ERRCHK(cudaFreeHost(m_piHVectorC));
 
     GPU_ERRCHK(cudaFree(m_piDVectorA));
     GPU_ERRCHK(cudaFree(m_piDVectorB));
