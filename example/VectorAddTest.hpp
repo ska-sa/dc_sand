@@ -33,6 +33,8 @@ class VectorAddTest : public UnitTest
         int *m_piDVectorC;
         
         size_t m_uVectorLength;
+        size_t m_ulBlockSize;
+        size_t m_ulNumBlocks;
 };
 
 #endif

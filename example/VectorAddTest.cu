@@ -19,6 +19,12 @@ VectorAddTest::VectorAddTest(size_t uVectorLength) : m_uVectorLength(uVectorLeng
     GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorA, m_uVectorLength*sizeof(*m_piDVectorA)));
     GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorB, m_uVectorLength*sizeof(*m_piDVectorB)));
     GPU_ERRCHK(cudaMalloc((void **) &m_piDVectorC, m_uVectorLength*sizeof(*m_piDVectorC)));
+
+    //Work out some kind of dimensionality for the kernel.
+    //This example is nearly trivial since it needs virtually no memory, but this can often be
+    //fairly critical for good utilisation of the GPU.
+    m_ulBlockSize = 256;
+    m_ulNumBlocks = (m_uVectorLength + m_ulBlockSize - 1) / m_ulBlockSize;  //round up.
 }
 
 
@@ -68,12 +74,7 @@ __global__ void kernel_vector_add(int *piVectorA, int *piVectorB, int *piVectorC
 
 void VectorAddTest::run_kernel()
 {
-    //Work out some kind of dimensionality for the kernel.
-    //This example is nearly trivial since it needs virtually no memory, but this can often be
-    //fairly critical for good utilisation of the GPU.
-    int blockSize = 256;
-    int numBlocks = (m_uVectorLength + blockSize - 1) / blockSize;
-    kernel_vector_add<<< numBlocks, blockSize >>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
+    kernel_vector_add<<<m_ulNumBlocks, m_ulBlockSize>>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
     GPU_ERRCHK(cudaGetLastError());
 }
 
