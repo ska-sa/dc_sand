@@ -56,10 +56,10 @@ float MemRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
         auto start = std::chrono::high_resolution_clock::now();
         do
         {
-                    ScanWrite256PtrUnrollLoop(m_ppMemArrays[i],m_i32BufferSize_bytes,i64NumTransfers);
-                    auto now = std::chrono::high_resolution_clock::now();
-                    iterations++;
-                    elapsed_s[i] = now - start;
+            ScanWrite256PtrUnrollLoop(m_ppMemArrays[i],m_i32BufferSize_bytes,i64NumTransfers);
+            auto now = std::chrono::high_resolution_clock::now();
+            iterations++;
+            elapsed_s[i] = now - start;
         } while (elapsed_s[i].count() < i64NumSeconds);
         i64TransferSize_bytes[i] = (int64_t)iterations*(int64_t)i64NumTransfers*(int64_t)m_i32BufferSize_bytes;
     }

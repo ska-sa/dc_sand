@@ -20,7 +20,6 @@
 #define DEFAULT_FRAME_SIZE_BYTES 5000000
 
 int main(int argc, char** argv){
-    omp_set_num_threads(100);
     omp_set_nested(1);
 
     std::cout << "================================================================================" << std::endl;
@@ -35,7 +34,7 @@ int main(int argc, char** argv){
         ("d2h,s", "Enable device to host stream")
         ("list_gpus,l", "List GPUs available on the current server")
         ("gpu_id_mask,g", boost::program_options::value<int32_t>()->default_value(0) ,"Mask to set which GPUs to use e.g. 0101 will use GPU 0 and 2 while skipping 1 and 3")
-        ("min_threads,m", boost::program_options::value<int64_t>()->default_value(1), "Minimum number of performing memcopies")
+        ("min_threads,m", boost::program_options::value<int64_t>()->default_value(0), "Minimum number of performing memcopies")
         ("max_threads,M", boost::program_options::value<int64_t>()->default_value(50), "Maximum number of threads performing memcopies")
         ("time_per_test_s,t", boost::program_options::value<int64_t>()->default_value(60), "Number of seconds to perform each test for")
         //("num_transfers_per_test,p", boost::program_options::value<int64_t>()->default_value(DEFAULT_NUM_TRANSFERS), "Number of frames to transfer")
@@ -77,8 +76,8 @@ int main(int argc, char** argv){
             std::cout << "ERROR: Minimum threads is greater than maximum threads" << std::endl;
             return -1;
         }
-        if(i64MinThreads <= 0 || i64MaxThreads <= 0){
-            std::cout << "ERROR: Number of threads needs to be greater than zero" << std::endl;
+        if(i64MinThreads < 0 || i64MaxThreads < 0){
+            std::cout << "ERROR: Number of threads needs to be <=0" << std::endl;
             return -1;
         }
         std::cout << "Testing System RAM Bandwidth with a thread count ranging from " << i64MinThreads << " to " << i64MaxThreads << std::endl;
@@ -86,6 +85,7 @@ int main(int argc, char** argv){
         i64MinThreads = 1;
         i64MaxThreads = 1;
     }
+    omp_set_num_threads(i64MaxThreads + 20);
 
     //Configure PCIe Transfers
     int i32DevicesCount;
