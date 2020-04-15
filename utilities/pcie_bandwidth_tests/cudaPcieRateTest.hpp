@@ -11,7 +11,7 @@
 #include "pcieRateTest.hpp"
 
 /// Defines number of events to use for synchronisation
-#define NUM_SYNC_EVENTS 100
+#define NUM_SYNC_EVENTS 200
 
 /// Standard CUDA error checking wrapper function
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
@@ -36,6 +36,7 @@ class CudaPcieRateTest : public PcieRateTest
         ~CudaPcieRateTest();
 
         float transfer(int64_t i64NumTransfers) override;
+        virtual float transferForLenghtOfTime(int64_t i64NumSeconds) override;
         
         /// Static function that returns a list of CUDA enabled GPUs as well as their device id for setting the correct value m_i32DeviceId. 
         static void list_gpus();

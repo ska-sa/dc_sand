@@ -38,6 +38,11 @@ class PcieRateTest
          */
         virtual float transfer(int64_t i64NumTransfers) = 0;
 
+        /**Initiate a transfer across the PCIe bus for a specific number of seconds. This function is PCIe device specific and must be implemented by the child class.
+         * \param i64NumTransfers Specifies the number of frames to transfer across the bus
+         */
+        virtual float transferForLenghtOfTime(int64_t i64NumSeconds) = 0;
+
     protected:
         /// Device ID of the PCIe device to use. This is implementation specific. Different child classes will assign different device IDs to supported devices
         int32_t m_i32DeviceId;
