@@ -11,7 +11,6 @@
 #include <omp.h>
 
 #include "cudaPcieRateTest.hpp"
-#include "openclPcieRateTest.hpp"
 #include "memRateTest.hpp"
 
 #define DEFAULT_NUM_TRANSFERS 5000

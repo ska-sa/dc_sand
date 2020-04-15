@@ -1,4 +1,4 @@
-OBJECTS= pcieRateTest.o cudaPcieRateTest.o openclPcieRateTest.o memRateTest.o main.o 
+OBJECTS= pcieRateTest.o cudaPcieRateTest.o memRateTest.o main.o 
 
 CUDA= /usr/local/cuda
 
