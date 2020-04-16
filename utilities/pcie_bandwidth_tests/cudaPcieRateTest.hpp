@@ -6,22 +6,11 @@
 #include <cstdint>
 #include <iostream>
 #include <cstring>
-
+#include "../../common/Utils.hpp"
 #include "pcieRateTest.hpp"
 
 /// Defines number of events to use for synchronisation
 #define NUM_SYNC_EVENTS 200
-
-/// Standard CUDA error checking wrapper function
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-   if (code != cudaSuccess) 
-   {
-      std::cout << "GPUassert: "<<cudaGetErrorString(code)<<" "<<file<<" "<<line<<"\n";
-      if (abort) exit(code);
-   }
-}
 
 /** \class   CudaPcieRateTest
  *  \brief   CUDA-specific implementation of the PcieRateTest class
