@@ -3,10 +3,9 @@
 
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <cstdint>
 #include <iostream>
-#include <string.h>
+#include <cstring>
 
 /** \class      PcieRateTest
  *  \brief      Measure the data rate between system RAM and a given PCIe device
@@ -20,16 +19,6 @@
 class PcieRateTest
 {
     public:
-        /// The default constructor is disabled.
-        PcieRateTest() = delete;
-        
-        /** Constructs the PcieRateTest class. Sets the PCIe device to use as well as the direction 
-        *   transfers must occur. The transfers parameters are specified here. A single transfer 
-        *   transfers a frame across the PCIe bus. A single buffer is allocated on the device - this 
-        *   buffer consists of a number of frames.
-        */
-       PcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, bool bH2D, bool bD2H);
-        
         /// The destructor must be virtual to ensure that derived classes' destructors are also called when the objects are destroyed.
         virtual ~PcieRateTest();
 
@@ -44,17 +33,24 @@ class PcieRateTest
         virtual float transferForLenghtOfTime(int64_t i64NumSeconds) = 0;
 
     protected:
+        /** Constructs the PcieRateTest class. Sets the PCIe device to use as well as the direction 
+        *   transfers must occur. The transfers parameters are specified here. A single transfer 
+        *   transfers a frame across the PCIe bus. A single buffer is allocated on the device - this 
+        *   buffer consists of a number of frames.
+        */
+        PcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, int64_t ulFrameSizeBytes,bool bH2D, bool bD2H);
+
         /// Device ID of the PCIe device to use. This is implementation specific. Different child classes will assign different device IDs to supported devices
         int32_t m_i32DeviceId;
 
-        /// Number of frames to assigne to a single buffer
-        int64_t m_i64NumFrames;
+        /// Number of frames to assign to a single buffer
+        size_t m_ulNumFrames;
 
         /// Size of a single frame in bytes
-        int64_t m_i64FrameSizeBytes;
+        int64_t m_ulFrameSizeBytes;
 
         /// Specifies the size of the buffer in bytes to be allocated on the device
-        int64_t m_i64DeviceBufferSize_bytes;
+        size_t m_ulDeviceBufferSize_bytes;
 
         /// Enable transfers from host to device
         bool m_bH2D;

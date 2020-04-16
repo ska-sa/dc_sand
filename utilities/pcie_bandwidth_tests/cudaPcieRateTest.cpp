@@ -1,22 +1,20 @@
 #include "cudaPcieRateTest.hpp"
 #include <chrono>
 
-CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes ,bool bH2D, bool bD2H):
-    PcieRateTest(i32DeviceId ,i64NumFrames ,i64FrameSizeBytes, bH2D, bD2H)
+CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, size_t ulFrameSizeBytes ,bool bH2D, bool bD2H):
+    PcieRateTest(i32DeviceId ,ulNumFrames ,ulFrameSizeBytes, bH2D, bD2H)
 {   
-    m_i64DeviceBufferSize_bytes = m_i64NumFrames*m_i64FrameSizeBytes;
-
-    /// Allocates device and host CUDA buffers, creates all required streams and syncrhonisation events
+    // Allocates device and host CUDA buffers, creates all required streams and syncrhonisation events
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
-    gpuErrchk(cudaMalloc(&m_pi32DGpuArray, m_i64DeviceBufferSize_bytes));
+    gpuErrchk(cudaMalloc(&m_pi32DGpuArray, m_ulDeviceBufferSize_bytes));
     if(m_bH2D == 1)
     {
-        gpuErrchk(cudaMallocHost(&m_pi32HInput, m_i64DeviceBufferSize_bytes));
+        gpuErrchk(cudaMallocHost(&m_pi32HInput, m_ulDeviceBufferSize_bytes));
         gpuErrchk(cudaStreamCreate(&m_streamH2D));
     }
     if(m_bD2H == 1)
     {
-        gpuErrchk(cudaMallocHost(&m_pi32HOutput, m_i64DeviceBufferSize_bytes));
+        gpuErrchk(cudaMallocHost(&m_pi32HOutput, m_ulDeviceBufferSize_bytes));
         gpuErrchk(cudaStreamCreate(&m_streamD2H));
     }
 
@@ -35,7 +33,7 @@ CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, in
 
 CudaPcieRateTest::~CudaPcieRateTest()
 {
-    /// Destroys all events and streams. Frees all allocated buffers
+    // Destroys all events and streams. Frees all allocated buffers
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
     gpuErrchk(cudaFree(m_pi32DGpuArray));
     if(m_bH2D == 1)
@@ -62,7 +60,7 @@ CudaPcieRateTest::~CudaPcieRateTest()
 }
 
 float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
-    /// Put timing start event on required stream
+    // Put timing start event on required stream
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamH2D));
@@ -70,14 +68,14 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamD2H));
     }
 
-    /// Transfer data between host and device
+    // Transfer data between host and device
     for (size_t i = 0; i < i64NumTransfers; i++)
     {
         if(m_bH2D == 1){
-            gpuErrchk(cudaMemcpyAsync(m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32HInput+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyHostToDevice, m_streamH2D));
+            gpuErrchk(cudaMemcpyAsync(m_pi32DGpuArray + (i % m_ulNumFrames)*m_ulFrameSizeBytes,m_pi32HInput + (i % m_ulNumFrames)*m_ulFrameSizeBytes, m_ulFrameSizeBytes, cudaMemcpyHostToDevice, m_streamH2D));
             if(m_bD2H == 1)
             {   
-                /// Record memcpy to device as complete
+                // Record memcpy to device as complete
                 gpuErrchk(cudaEventRecord(m_pEventSync[i % NUM_SYNC_EVENTS],m_streamH2D));
             }
         }
@@ -85,14 +83,14 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
         if(m_bD2H == 1){
             if(m_bH2D == 1)
             {
-                /// Wait until memcpy to device of a specific frame is complete before transferring it back to the host.
+                // Wait until memcpy to device of a specific frame is complete before transferring it back to the host.
                 gpuErrchk(cudaStreamWaitEvent(m_streamD2H,m_pEventSync[i % NUM_SYNC_EVENTS],0));
             }
-            gpuErrchk(cudaMemcpyAsync(m_pi32HOutput+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
+            gpuErrchk(cudaMemcpyAsync(m_pi32HOutput + (i % m_ulNumFrames)*m_ulFrameSizeBytes,m_pi32DGpuArray + (i % m_ulNumFrames)*m_ulFrameSizeBytes, m_ulFrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
         }
         
-        //Wait until all buffers have finished processing. 
-        //There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
+        // Wait until all buffers have finished processing. 
+        // There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
             if(m_bD2H == 1){
                 gpuErrchk(cudaStreamSynchronize(m_streamD2H));
@@ -102,19 +100,19 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
         }
     }
 
-    /// Put timing stop event on requried stream
+    // Put timing stop event on requried stream
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventEnd,m_streamH2D));
     }else{
         gpuErrchk(cudaEventRecord(m_eventEnd,m_streamD2H));
     }
 
-    /// Wait for all streams to finish processing
+    // Wait for all streams to finish processing
     gpuErrchk(cudaDeviceSynchronize());
 
-    /// Calculate and return data rate
+    // Calculate and return data rate
     float fElapsedTime_ms;
-    float fTotalTransfer_bytes = (int64_t)m_i64FrameSizeBytes*i64NumTransfers;
+    float fTotalTransfer_bytes = (int64_t)m_ulFrameSizeBytes*i64NumTransfers;
     gpuErrchk(cudaEventElapsedTime(&fElapsedTime_ms,m_eventStart,m_eventEnd));
 
     float fTotalTransfer_Gbytes = fTotalTransfer_bytes/1000.0/1000.0/1000.0;
@@ -124,7 +122,7 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
 }
 
 float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
-    /// Put timing start event on required stream
+    // Put timing start event on required stream
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamH2D));
@@ -140,7 +138,7 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
     {
         int64_t i = i64NumTransfers;
         if(m_bH2D == 1){
-            gpuErrchk(cudaMemcpyAsync(m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32HInput+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyHostToDevice, m_streamH2D));
+            gpuErrchk(cudaMemcpyAsync(m_pi32DGpuArray+(i%m_ulNumFrames)*m_ulFrameSizeBytes,m_pi32HInput+(i%m_ulNumFrames)*m_ulFrameSizeBytes, m_ulFrameSizeBytes, cudaMemcpyHostToDevice, m_streamH2D));
             if(m_bD2H == 1)
             {   
                 // Record memcpy to device as complete
@@ -154,11 +152,11 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
                 // Wait until memcpy to device of a specific frame is complete before transferring it back to the host.
                 gpuErrchk(cudaStreamWaitEvent(m_streamD2H,m_pEventSync[i % NUM_SYNC_EVENTS],0));
             }
-            gpuErrchk(cudaMemcpyAsync(m_pi32HOutput+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
+            gpuErrchk(cudaMemcpyAsync(m_pi32HOutput+(i%m_ulNumFrames)*m_ulFrameSizeBytes,m_pi32DGpuArray+(i%m_ulNumFrames)*m_ulFrameSizeBytes, m_ulFrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
         }
         
-        //Wait until all buffers have finished processing. 
-        //There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
+        // Wait until all buffers have finished processing. 
+        // There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
             if(m_bD2H == 1){
                 gpuErrchk(cudaStreamSynchronize(m_streamD2H));
@@ -183,7 +181,7 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
 
     // Calculate and return data rate
     float fElapsedTime_ms;
-    float fTotalTransfer_bytes = (int64_t)m_i64FrameSizeBytes*i64NumTransfers;
+    float fTotalTransfer_bytes = (int64_t)m_ulFrameSizeBytes*i64NumTransfers;
     gpuErrchk(cudaEventElapsedTime(&fElapsedTime_ms,m_eventStart,m_eventEnd));
 
     float fTotalTransfer_Gbytes = fTotalTransfer_bytes/1000.0/1000.0/1000.0;
@@ -197,10 +195,10 @@ void CudaPcieRateTest::list_gpus()
     int i32DevicesCount;
     cudaGetDeviceCount(&i32DevicesCount);
     std::cout << "Available Cuda Devices:" <<std::endl;
-    for(int int32DeviceIndex = 0; int32DeviceIndex < i32DevicesCount; ++int32DeviceIndex)
+    for(int i32DeviceIndex = 0; i32DeviceIndex < i32DevicesCount; ++i32DeviceIndex)
     {
         cudaDeviceProp deviceProperties;
-        cudaGetDeviceProperties(&deviceProperties, int32DeviceIndex);
-        std::cout << "\tDevice ID: " << int32DeviceIndex << ". Device: " << deviceProperties.name << " PCIe Domain ID: " << deviceProperties.pciDomainID << std::endl;
+        cudaGetDeviceProperties(&deviceProperties, i32DeviceIndex);
+        std::cout << "\tDevice ID: " << i32DeviceIndex << ". Device: " << deviceProperties.name << " PCIe Domain ID: " << deviceProperties.pciDomainID << std::endl;
     }
 }

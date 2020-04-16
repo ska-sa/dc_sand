@@ -3,10 +3,9 @@
 
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <cstdint>
 #include <iostream>
-#include <string.h>
+#include <cstring>
 
 #include "pcieRateTest.hpp"
 
@@ -19,19 +18,19 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 {
    if (code != cudaSuccess) 
    {
-      printf("GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      std::cout << "GPUassert: "<<cudaGetErrorString(code)<<" "<<file<<" "<<line<<"\n";
       if (abort) exit(code);
    }
 }
 
 /** \class   CudaPcieRateTest
- *  \brief   CUDA specific implementation of the PcieRateTest class
+ *  \brief   CUDA-specific implementation of the PcieRateTest class
  *  \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
  */
 class CudaPcieRateTest : public PcieRateTest
 {
     public:
-        CudaPcieRateTest(int32_t i32DeviceId, int64_t i64NumFrames, int64_t i64FrameSizeBytes, bool bH2D, bool bD2H);
+        CudaPcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, size_t ulFrameSizeBytes ,bool bH2D, bool bD2H);
 
         ~CudaPcieRateTest();
 
@@ -44,10 +43,8 @@ class CudaPcieRateTest : public PcieRateTest
     protected:
         /// Host pointer to store data for host to device transfers
         int8_t * m_pi32HInput;
-
         /// Host pointer to store data for device to host transfers
         int8_t * m_pi32HOutput; 
-
         /// Device pointer to store data for both device to host and host to device transfers
         int8_t * m_pi32DGpuArray;
 
@@ -56,9 +53,11 @@ class CudaPcieRateTest : public PcieRateTest
         /// Stream for device to host data transfers
         cudaStream_t m_streamD2H;
 
-        /// CUDA events for timing and synchronisation across treams
+        /// CUDA event for logging the starting time of a data stream
         cudaEvent_t m_eventStart;
+        /// CUDA event for logging the ending time of a data stream
         cudaEvent_t m_eventEnd;
+        /// CUDA events for syncing the H2D and D2H transfers so that the same frame is not transmitted and received simultaneously
         cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];
 };
 

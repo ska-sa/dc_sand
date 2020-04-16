@@ -1,10 +1,10 @@
 #include <cuda_runtime.h>
 #include <cuda.h>
-#include <stdint.h>
+#include <cstdint>
 #include <sstream>
 #include <iostream>
 #include <iomanip>
-#include <string.h>
+#include <cstring>
 #include <boost/program_options.hpp>
 #include <string>
 #include <limits>
