@@ -121,7 +121,7 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
     return fTransferRate_Gbps;
 }
 
-float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
+float CudaPcieRateTest::transferForLengthOfTime(int64_t i64NumSeconds_s){
     // Put timing start event on required stream
     GPU_ERRCHK(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){

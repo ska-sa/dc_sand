@@ -24,8 +24,11 @@ class MemRateTest
 
         /** Constructs the MemRateTest class. Sets the nmber of threads that must transfer as well as 
          *  the amount of memory to be allocated by a single thread
+         *  \param i32NumThreads Specify the number of threads to transfer in parallel
+         *  \param i32BufferSize_bytes Specify the size of the buffer in bytes to allocate per thread
+         *  \param useHughPages Set true to use hugh pages. Will throw an error if OS is not configured properly
          */
-        MemRateTest(int32_t i32NumThreads, int32_t i32BufferSize_bytes);
+        MemRateTest(size_t ulNumThreads, size_t ulBufferSize_bytes, bool useHugePages);
 
         /// Destructor releases all assigned buffers
         ~MemRateTest();
@@ -44,13 +47,13 @@ class MemRateTest
         
     protected:
         ///Number of threads to execute in parallel
-        int32_t m_i32NumThreads;
+        size_t m_ulNumThreads;
 
         ///Array of pointers to locations in memory to continuously read data from
         char ** m_ppMemArrays;
 
         ///Size of a single buffer
-        int32_t m_i32BufferSize_bytes; 
+        size_t m_ulBufferSize_bytes; 
 };
 
 #endif

@@ -23,14 +23,16 @@ class PcieRateTest
         virtual ~PcieRateTest();
 
         /** Initiate a transfer across the PCIe bus. This function is PCIe device specific and must be implemented by the child class.
-         * \param i64NumTransfers Specifies the number of frames to transfer across the bus
+         *  \param i64NumTransfers Specifies the number of frames to transfer across the bus
+         *  \return Returns the rate in Gbps that the data was transferred across the bus
          */
         virtual float transfer(int64_t i64NumTransfers) = 0;
 
         /** Initiate a transfer across the PCIe bus for a specific number of seconds. This function is PCIe device specific and must be implemented by the child class.
          *  \param i64NumTransfers Specifies the number of frames to transfer across the bus
+         *  \return Returns the rate in Gbps that the data was transferred across the bus
          */
-        virtual float transferForLenghtOfTime(int64_t i64NumSeconds) = 0;
+        virtual float transferForLengthOfTime(int64_t i64NumSeconds) = 0;
 
     protected:
         /** Constructs the PcieRateTest class. Sets the PCIe device to use as well as the direction 

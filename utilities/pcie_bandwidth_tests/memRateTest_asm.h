@@ -12,12 +12,13 @@
 
 /** Function to allocate memory. Using mmap instead of malloc as it allows for hugh pages to be used.
  *  \param size Size in bytes to allocate 
+ *  \param useHughPages set to 0 to not use hugh pages. Hugh pages need to be configured correctly on unix OS or else this throws an error when trying to allocate hugh pages
  */
 
-static char *allocate(std::size_t size)
+static char *allocate(std::size_t size, uint8_t useHugePages)
 {
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
-    if (HUGE_PAGES)
+    if (useHugePages)
         flags |= MAP_HUGETLB;
     void *addr = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, -1, 0);
     assert(addr != MAP_FAILED);

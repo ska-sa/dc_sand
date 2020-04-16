@@ -28,6 +28,7 @@ int main(int argc, char** argv){
         ("mem_bw_test,b", "Perform memcpy test")
         ("h2d,d", "Enable host to device stream")
         ("d2h,s", "Enable device to host stream")
+        ("use_huge_pages,p", "Enables hugh memory pages. Not all Unix systems will support this by default")
         ("csv,c", "Disables all human readable text and instead outputs the data in a csv format for easier exporting to external programs")
         ("list_gpus,l", "List GPUs available on the current server")
         ("gpu_id_mask,g", boost::program_options::value<int32_t>()->default_value(0) ,"Mask to set which GPUs to use e.g. 0101 will use GPU 0 and 2 while skipping 1 and 3")
@@ -69,6 +70,21 @@ int main(int argc, char** argv){
         return 1;
     }
 
+    bool useHughPages = false;
+    if (clVariableMap.count("use_huge_pages"))
+    {
+        useHughPages=true;
+    }
+    if(!bCsvMode)
+    {
+        if(useHughPages){
+            std::cout << "Hugh memory pages enabled" <<std::endl;
+        }else{
+            std::cout << "Hugh memory pages not enabled" <<std::endl;
+        }
+    }
+    
+
     int64_t i64TestLength_s = clVariableMap["time_per_test_s"].as<int64_t>();
     if(i64TestLength_s<=0){
         std::cout << "ERROR: Time per test needs to be greater than 0" << std::endl;
@@ -76,9 +92,9 @@ int main(int argc, char** argv){
     }
     int64_t i64MinThreads = clVariableMap["min_threads"].as<int64_t>();
     int64_t i64MaxThreads = clVariableMap["max_threads"].as<int64_t>();
-    
     //Configure RAM bandwidth test
     bool bPerformMemBWTest = false;
+    
     if (clVariableMap.count("mem_bw_test"))
     {
         bPerformMemBWTest = true;
@@ -185,7 +201,7 @@ int main(int argc, char** argv){
                 //Performs memory bandwidth tests
                 if(bPerformMemBWTest)
                 {
-                    MemRateTest memRateTest(i32ThreadCount,256*2048*2048);    
+                    MemRateTest memRateTest(i32ThreadCount,256*2048*2048,useHughPages);    
                     fMemRate_GBps = memRateTest.transferForLenghtOfTime(i64TestLength_s);
                 }
             }
@@ -199,7 +215,7 @@ int main(int argc, char** argv){
                     if(pbGPUMask[i32DeviceId] == true)
                     {
                         CudaPcieRateTest cudaPcieRateTest(i32DeviceId,DEFAULT_NUM_FRAMES,DEFAULT_FRAME_SIZE_BYTES, bH2D, bD2H);
-                        fPcieRate_Gbps[i32DeviceId] = cudaPcieRateTest.transferForLenghtOfTime(i64TestLength_s);
+                        fPcieRate_Gbps[i32DeviceId] = cudaPcieRateTest.transferForLengthOfTime(i64TestLength_s);
                     }
                 }
             }    
