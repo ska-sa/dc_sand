@@ -133,10 +133,10 @@ int main(int argc, char** argv){
             uint8_t u8BitSlice = pbUseGPU%10;
             pbUseGPU = pbUseGPU/10;
             if(u8BitSlice == 1){
+                pbGPUMask[i] = true;
                 if(!csvMode)
                 {   
                     std::cout << "Using GPU Index: " << i << std::endl;
-                    pbGPUMask[i] = true;
                 }
             }
         }
@@ -204,15 +204,16 @@ int main(int argc, char** argv){
         }else{
             std::cout << i << "," << fMemRate_GBps;
         }
+        
         for (size_t j = 0; j < i32DevicesCount; j++)
         {
             if(pbGPUMask[j] == true)
             {
                 if(!csvMode)
                 {
-                    std::cout << std::setw(25) << std::setprecision(6) << fPcieRate_Gbps[0];
+                    std::cout << std::setw(25) << std::setprecision(6) << fPcieRate_Gbps[j];
                 }else{
-                    std::cout << "," << fPcieRate_Gbps[0];
+                    std::cout << "," << fPcieRate_Gbps[j];
                 }
             }
         }
