@@ -42,7 +42,7 @@ SHORT_NAMES            = NO
 JAVADOC_AUTOBRIEF      = NO
 QT_AUTOBRIEF           = NO
 MULTILINE_CPP_IS_BRIEF = NO
-INHERIT_DOCS           = NO
+INHERIT_DOCS           = YES
 SEPARATE_MEMBER_PAGES  = YES
 TAB_SIZE               = 4
 ALIASES                =
@@ -134,14 +134,14 @@ FILE_PATTERNS          = *.cpp \
                          *.cuh \
                          *.m \
                          *.markdown \
-                         *.md \
+                         *.md
 RECURSIVE              = YES
 EXCLUDE                =
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       =
 EXCLUDE_SYMBOLS        =
 #\todo this is actually a good idea.
-EXAMPLE_PATH           =
+EXAMPLE_PATH           = example
 EXAMPLE_PATTERNS       = *
 EXAMPLE_RECURSIVE      = NO
 IMAGE_PATH             =
