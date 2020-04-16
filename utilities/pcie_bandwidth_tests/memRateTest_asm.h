@@ -1,4 +1,3 @@
-
 #ifndef MEM_RATE_TEST_ASM_H
 #define MEM_RATE_TEST_ASM_H
 
@@ -8,59 +7,12 @@
 #include <sys/mman.h>
 #include <cassert>
 
-
-// typedef void (*testfunc_type)(char* memarea, size_t size, size_t repeats);
-
-// struct TestFunction
-// {
-//     // identifier of the test function
-//     const char* name;
-
-//     // function to call
-//     testfunc_type func;
-
-//     // prerequisite CPU feature
-//     const char* cpufeat;
-
-//     // number of bytes read/written per access (for latency calculation)
-//     unsigned int bytes_per_access;
-
-//     // bytes skipped foward to next access point (including bytes_per_access)
-//     unsigned int access_offset;
-
-//     // number of accesses before and after
-//     unsigned int unroll_factor;
-
-//     // fill the area with a permutation before calling the func
-//     bool make_permutation;
-
-//     // constructor which also registers the function
-//     TestFunction(const char* n, testfunc_type f, const char* cf,
-//                  unsigned int bpa, unsigned int ao, unsigned int unr,
-//                  bool mp);
-
-//     // test CPU feature support
-//     bool is_supported() const;
-// };
-
-// std::vector<TestFunction*> g_testlist;
-
-// TestFunction::TestFunction(const char* n, testfunc_type f, const char* cf,
-//                            unsigned int bpa, unsigned int ao, unsigned int unr,
-//                            bool mp)
-//     : name(n), func(f), cpufeat(cf),
-//       bytes_per_access(bpa), access_offset(ao), unroll_factor(unr),
-//       make_permutation(mp)
-// {
-//     g_testlist.push_back(this);
-// }
-
-// #define REGISTER_CPUFEAT(func, cpufeat, bytes, offset, unroll)  \
-//     static const struct TestFunction* _##func##_register =       \
-//         new TestFunction(#func,func,cpufeat,bytes,offset,unroll,false);
-
-
+//Set to 1 to use huge pages. Remanant of old code from SDP. This could be adjusted so that this is a parameter in the allocate function
 #define HUGE_PAGES 0
+
+/** Function to allocate memory. Using mmap instead of malloc as it allows for hugh pages to be used.
+ *  \param size Size in bytes to allocate 
+ */
 
 static char *allocate(std::size_t size)
 {
@@ -72,7 +24,14 @@ static char *allocate(std::size_t size)
     return (char *) addr;
 }
 
-// 256-bit writer in an unrolled loop (Assembler version)
+/** Assembler code to perform an unrolled write to RAM using the 256-bit AVX registers. For some reason writing to RAM 
+ *  reports an order of magnitude faster data rates than reading from RAM. I do not think this is correct but I would need
+ *  to investigate further.
+ *  \param memarea  Pointer to buffer to write data to. Pointer should have been allocated with \ref allocate() function
+ *  \param size     Number of bytes to write in a single transfer
+ *  \param repeats  Number of times to repeat the transfer
+ */
+
 void ScanWrite256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
 {
     uint64_t value = 0xC0FFEEEEBABE0000;
@@ -111,9 +70,12 @@ void ScanWrite256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
         : "rax", "xmm0", "cc", "memory");
 }
 
-//REGISTER_CPUFEAT(ScanWrite256PtrUnrollLoop, "avx", 32, 32, 16);
 
-// 256-bit reader in an unrolled loop (Assembler version)
+/** Assembler code to perform an unrolled read to RAM using the 256-bit AVX registers.
+ *  \param memarea  Pointer to buffer to read data from. Pointer should have been allocated with \ref allocate() function
+ *  \param size     Number of bytes to read in a single transfer
+ *  \param repeats  Number of times to repeat the transfer
+ */
 void ScanRead256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
 {
     asm volatile(
@@ -147,7 +109,4 @@ void ScanRead256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
         : [memarea] "r" (memarea), [end] "r" (memarea+size)
         : "rax", "xmm0", "cc", "memory");
 }
-
-//REGISTER_CPUFEAT(ScanRead256PtrUnrollLoop, "avx", 32, 32, 16);
-
 #endif

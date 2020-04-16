@@ -24,9 +24,9 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-/**\class CudaPcieRateTest
- * \brief   CUDA specific implementation of the PcieRateTest class
- * \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
+/** \class   CudaPcieRateTest
+ *  \brief   CUDA specific implementation of the PcieRateTest class
+ *  \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
  */
 class CudaPcieRateTest : public PcieRateTest
 {
@@ -36,17 +36,19 @@ class CudaPcieRateTest : public PcieRateTest
         ~CudaPcieRateTest();
 
         float transfer(int64_t i64NumTransfers) override;
-        virtual float transferForLenghtOfTime(int64_t i64NumSeconds) override;
+        virtual float transferForLenghtOfTime(int64_t i64NumSeconds_s) override;
         
         /// Static function that returns a list of CUDA enabled GPUs as well as their device id for setting the correct value m_i32DeviceId. 
         static void list_gpus();
 
     protected:
-        ///Device pointers
+        /// Host pointer to store data for host to device transfers
         int8_t * m_pi32HInput;
+
+        /// Host pointer to store data for device to host transfers
         int8_t * m_pi32HOutput; 
 
-        ///Host pointers
+        /// Device pointer to store data for both device to host and host to device transfers
         int8_t * m_pi32DGpuArray;
 
         /// Stream for host to device data transfers

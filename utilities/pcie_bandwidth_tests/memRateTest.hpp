@@ -6,19 +6,41 @@
 #include <iostream>
 #include <string.h>
 
-/**\class MemRateTest
- * \brief   CUDA specific implementation of the PcieRateTest class
- * \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
+/** \class      MemRateTest
+ *  \brief      Measure the system RAM bandwidth
+ *  \details    The MemRateTest class measures the system RAM bandwidth. To perform the transfers, a
+ *              function was written in assembly to read large chunks of data from system RAM into 256-bit
+ *              wide AVX registers on the CPU. The assembly functions do not get optomised by the compiler
+ *              - this is desirable in this instance. This class provides the functionality for spawning 
+ *              multiple threads to perform transfers as more threads generally results in increased memory
+ *              bandwidth until memory bus saturation.
  */
 class MemRateTest
 {
     public:
+        
+        /// The default constructor is disabled.
+        MemRateTest() = delete;
+
+        /** Constructs the MemRateTest class. Sets the nmber of threads that must transfer as well as 
+         *  the amount of memory to be allocated by a single thread
+         */
         MemRateTest(int32_t i32NumThreads, int32_t i32BufferSize_bytes);
 
+        /// Destructor releases all assigned buffers
         ~MemRateTest();
 
+        /** Reads data from RAM and benchmarks the transfer rate.
+        *  \param i64NumTransfers Specifies the number of times to read data from the entire buffer. 
+        *  \return Returns the rate in GBps that the data was read from RAM
+        */
         float transfer(int64_t i64NumTransfers);
-        float transferForLenghtOfTime(int64_t i64NumSeconds);
+
+        /** Reads data from RAM for a specific period of time and benchmarks the transfer rate.
+        *  \param i64NumSeconds_s Specifies the number of seconds to spend reading data from the entire buffer. 
+        *  \return Returns the rate in GBps that the data was read from RAM
+        */
+        float transferForLenghtOfTime(int64_t i64NumSeconds_s);
         
     protected:
         ///Number of threads to execute in parallel
@@ -29,23 +51,6 @@ class MemRateTest
 
         ///Size of a single buffer
         int32_t m_i32BufferSize_bytes; 
-
-        ///Device pointers
-        //int8_t * m_pi32HInput;
-        //int8_t * m_pi32HOutput; 
-
-        ///Host pointers
-        //int8_t * m_pi32DGpuArray;
-
-        /// Stream for host to device data transfers
-        //cudaStream_t m_streamH2D;
-        /// Stream for device to host data transfers
-        //cudaStream_t m_streamD2H;
-
-        /// CUDA events for timing and synchronisation across treams
-        //cudaEvent_t m_eventStart;
-        //cudaEvent_t m_eventEnd;
-        //cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];
 };
 
 #endif

@@ -3,7 +3,6 @@ OBJECTS= pcieRateTest.o cudaPcieRateTest.o memRateTest.o main.o
 CUDA= /usr/local/cuda
 
 INCLUDES= -I$(CUDA)/include
-#LIBRARIES= -lcuda -lcublas 
 
 LIBRARIES=-L$(CUDA)/lib64 \
         -L$(CUDA)/lib64/stubs -lcuda -lOpenCL -lboost_program_options

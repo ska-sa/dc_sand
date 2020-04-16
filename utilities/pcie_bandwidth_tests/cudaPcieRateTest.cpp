@@ -62,7 +62,7 @@ CudaPcieRateTest::~CudaPcieRateTest()
 }
 
 float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
-    /// Put timing start event on requried stream
+    /// Put timing start event on required stream
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamH2D));
@@ -91,6 +91,8 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
             gpuErrchk(cudaMemcpyAsync(m_pi32HOutput+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
         }
         
+        //Wait until all buffers have finished processing. 
+        //There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
             if(m_bD2H == 1){
                 gpuErrchk(cudaStreamSynchronize(m_streamD2H));
@@ -121,8 +123,8 @@ float CudaPcieRateTest::transfer(int64_t i64NumTransfers){
     return fTransferRate_Gbps;
 }
 
-float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
-    /// Put timing start event on requried stream
+float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){
+    /// Put timing start event on required stream
     gpuErrchk(cudaSetDevice(m_i32DeviceId));
     if(m_bH2D == 1){
         gpuErrchk(cudaEventRecord(m_eventStart,m_streamH2D));
@@ -131,9 +133,9 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
     }
 
     int64_t i64NumTransfers = 0;
-    std::chrono::duration<double> elapsed_s;
+    std::chrono::duration<double> timeElapsed_s;
     auto start = std::chrono::high_resolution_clock::now();
-    // Transfer data between host and device
+    // Transfer data between host and device. This transfer will continue until i64NumSeconds_s have passed
     do
     {
         int64_t i = i64NumTransfers;
@@ -155,6 +157,8 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
             gpuErrchk(cudaMemcpyAsync(m_pi32HOutput+(i%m_i64NumFrames)*m_i64FrameSizeBytes,m_pi32DGpuArray+(i%m_i64NumFrames)*m_i64FrameSizeBytes, m_i64FrameSizeBytes, cudaMemcpyDeviceToHost, m_streamD2H));
         }
         
+        //Wait until all buffers have finished processing. 
+        //There may be a more efficient way to do this by waiting on individual events instead of an entire stream but this will maybe gain 1% or 2% more performance.
         if((i%NUM_SYNC_EVENTS) == (NUM_SYNC_EVENTS-1)){
             if(m_bD2H == 1){
                 gpuErrchk(cudaStreamSynchronize(m_streamD2H));
@@ -164,8 +168,8 @@ float CudaPcieRateTest::transferForLenghtOfTime(int64_t i64NumSeconds){
         }
         i64NumTransfers++;
         auto now = std::chrono::high_resolution_clock::now();
-        elapsed_s = now - start;
-    } while (elapsed_s.count() < i64NumSeconds);
+        timeElapsed_s = now - start;
+    } while (timeElapsed_s.count() < i64NumSeconds_s);
 
     // Put timing stop event on requried stream
     if(m_bH2D == 1){
