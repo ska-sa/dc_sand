@@ -5,6 +5,7 @@
 
 #include "UnitTest.hpp"
 #include <cstdint>
+#include <ctime>
 
 class BeamformerCoeffTest : public UnitTest
 {
@@ -26,7 +27,7 @@ class BeamformerCoeffTest : public UnitTest
     private:
         struct delay_vals_extended {
             float fSamplingPeriod_s; // seconds. Inverse of sampling frequency.
-            struct timespec refTime_ns; //epoch time, nanosecond precision
+            struct timespec sRefTime_ns; //epoch time, nanosecond precision
             float fDelay_s; // seconds
             float fDelayRate_sps; //seconds per second
             float fPhase_rad; //radians
@@ -49,7 +50,7 @@ class BeamformerCoeffTest : public UnitTest
         dim3 m_cudaBlockSize;
 
         //Sizes of data to transfers
-        size_t m_ulMatrixSizeSteeringCoefficients;
+        size_t m_ulSizeSteeringCoefficients;
         size_t m_ulSizeDelayValues;
 
         //Delay rate specific values
