@@ -6,11 +6,14 @@
 #define NR_STATIONS 84 //NUmber of antennas
 #define NR_BEAMS 10
 
+//Values used to calculate delays
+#define SAMPLING_PERIOD 1e-9f
+#define FFT_SIZE 8192
+
 #define NUM_THREADS_PER_BLOCK 128
 
-struct delay_vals_extended {
-    float fSamplingPeriod_s; // seconds. Inverse of sampling frequency.
-    struct timespec sRefTime_ns; //epoch time, nanosecond precision
+
+struct delay_vals{
     float fDelay_s; // seconds
     float fDelayRate_sps; //seconds per second
     float fPhase_rad; //radians

@@ -29,11 +29,11 @@ class BeamformerCoeffTest : public UnitTest
         float m_fFloatingPointTolerance;
 
         //Host pointers
-        delay_vals_extended *m_pHDelayValues;
+        delay_vals *m_pHDelayValues;
         float *m_pfHSteeringCoeffs;
 
         //device pointers
-        delay_vals_extended *m_pDDelayValues;
+        delay_vals *m_pDDelayValues;
         float *m_pfDSteeringCoeffs;
 
         //Kernel Dimenstions
@@ -45,7 +45,7 @@ class BeamformerCoeffTest : public UnitTest
         size_t m_ulSizeDelayValues;
 
         //Delay rate specific values
-        struct timespec m_sCurrentTime_ns;
+        struct timespec m_sReferenceTime_ns;
 };
 
 #endif
