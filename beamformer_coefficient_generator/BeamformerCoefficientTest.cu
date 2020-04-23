@@ -12,7 +12,7 @@ float ts_diff(struct timespec first, struct timespec last)
 {
     float time_difference = (float) last.tv_sec - (float) first.tv_sec;
     long nanosec_difference = last.tv_nsec - first.tv_nsec;
-    time_difference += (float) nanosec_difference / 1e9; //Should work if this is negative as well?
+    time_difference += (float) nanosec_difference / 1e9f; //Should work if this is negative as well?
     return time_difference;
 }
 
@@ -44,8 +44,11 @@ BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance):
     }else{
         threadsPerBlock = numSamplesPerChannel;
     }
-    m_cudaGridSize = dim3(numBlocksPerChannel,NR_STATIONS);
+    m_cudaGridSize = dim3(numBlocksPerChannel,NR_STATIONS);//dim3(7,1);//
     m_cudaBlockSize = dim3(threadsPerBlock);
+    std::cout << "Block Size: " << threadsPerBlock << std::endl;
+    std::cout << "Grid Size: x: " << numBlocksPerChannel << " y: " << NR_STATIONS << std::endl; 
+
 }
 
 BeamformerCoeffTest::~BeamformerCoeffTest()
@@ -58,7 +61,7 @@ BeamformerCoeffTest::~BeamformerCoeffTest()
 
 void BeamformerCoeffTest::simulate_input()
 {
-    float fSamplingPeriod = 1e-9;
+    float fSamplingPeriod = 1e-9f;
     struct timespec sRefTime;
     sRefTime.tv_sec = m_sCurrentTime_ns.tv_sec;
     sRefTime.tv_nsec = m_sCurrentTime_ns.tv_nsec;
@@ -101,6 +104,8 @@ void BeamformerCoeffTest::transfer_DtoH()
 
 void BeamformerCoeffTest::verify_output()
 {
+    int temp = 0;
+
     float * fCorrectDate = (float*)malloc(NR_BEAMS*NR_CHANNELS*NR_STATIONS*2*sizeof(float));
     for (size_t c = 0; c < NR_CHANNELS; c++)
     {
@@ -124,33 +129,24 @@ void BeamformerCoeffTest::verify_output()
                 size_t ulCoeffIndex =  2*(c*NR_STATIONS*NR_BEAMS + a*NR_BEAMS + b);
                 fCorrectDate[ulCoeffIndex] = fSteeringCoeffCorrectReal;
                 fCorrectDate[ulCoeffIndex+1] = fSteeringCoeffCorrectImag;
-                //float fSteeringCoeffGeneratedReal = m_pfHSteeringCoeffs[ulCoeffIndex];
-                //float fSteeringCoeffGeneratedImag = m_pfHSteeringCoeffs[ulCoeffIndex+1];
 
-                //std::cout << ulCoeffIndex << std::endl;
-                //if(std::abs(fSteeringCoeffGeneratedReal - fSteeringCoeffCorrectReal) > m_fFloatingPointTolerance
-                //    || std::abs(fSteeringCoeffGeneratedImag - fSteeringCoeffCorrectImag) > m_fFloatingPointTolerance)
-                //{
-                //    std::cout << fSteeringCoeffGeneratedReal << " " <<  fSteeringCoeffCorrectReal << std::endl;
-                //    std::cout << fSteeringCoeffGeneratedImag << " " <<  fSteeringCoeffCorrectImag << std::endl;
-                //    m_iResult = -1;
-                //    //return;
+                //if(ulCoeffIndex == 1680 /*|| (ulCoeffIndex > 1600 && ulCoeffIndex < 1700)*/ ){
+                //    std::cout << ulCoeffIndex << " C: " << c << ", A: " << a << ", B: " << b << " Correct data: " << fSteeringCoeffCorrectReal << " + " << fSteeringCoeffCorrectImag << "j" << std::endl;
                 //}
-
-                //cplx_beamweights[2*(c*n_antennas*n_beams + a*n_beams + b)] = cos(rotation);
-                //cplx_beamweights[2*(c*n_antennas*n_beams + a*n_beams + b)+1] = sin(rotation);
-                //std::cout << " c: " << c << " b: " << b << " a: " << a << " r: " << cplx_beamweights[2*(c*n_antennas*n_beams + a*n_beams + b)] << " i: " << cplx_beamweights[2*(c*n_antennas*n_beams + a*n_beams + b)+1] <<std::endl; 
             }
         }
     }
 
-    std::cout << NR_STATIONS*NR_CHANNELS*NR_BEAMS*2 << std::endl;
+    //std::cout << NR_STATIONS*NR_CHANNELS*NR_BEAMS*2 << std::endl;
     for (size_t i = 0; i < NR_STATIONS*NR_CHANNELS*NR_BEAMS*2; i++)
     {
         if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectDate[i]) > m_fFloatingPointTolerance){
-            std::cout << i << " " << m_pfHSteeringCoeffs[i] << " " << fCorrectDate[i] << std::endl;
-            //m_iResult = -1;
-            //return;
+            std::cout << i << " Generated " << m_pfHSteeringCoeffs[i] << " Correct " << fCorrectDate[i] << std::endl;
+            // temp++;
+            // if(temp == 1){
+            m_iResult = -1;
+            return;
+            // }
         }
     }
 

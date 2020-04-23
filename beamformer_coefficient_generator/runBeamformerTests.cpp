@@ -5,7 +5,7 @@
 int main()
 {
     
-    BeamformerCoeffTest beamformerCoeffTest(1e-6);
+    BeamformerCoeffTest beamformerCoeffTest(1e-6f);
     beamformerCoeffTest.run_test();
     
     std::cout << beamformerCoeffTest.get_result() << "\n";
