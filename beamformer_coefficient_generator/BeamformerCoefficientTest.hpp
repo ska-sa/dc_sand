@@ -10,7 +10,12 @@
 class BeamformerCoeffTest : public UnitTest
 {
     public:
-        BeamformerCoeffTest(float fFloatingPointTolerance);
+        enum SteeringCoefficientKernel
+        {
+            NAIVE
+        };
+
+        BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);
         ~BeamformerCoeffTest();
 
     protected:
@@ -46,6 +51,11 @@ class BeamformerCoeffTest : public UnitTest
 
         //Delay rate specific values
         struct timespec m_sReferenceTime_ns;
+
+        //Kernel to use
+        SteeringCoefficientKernel  m_eKernelOption;
+
+        void generate_GPU_kernel_dimensions();
 };
 
 #endif

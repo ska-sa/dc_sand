@@ -2,10 +2,6 @@
 #include "BeamformerParameters.h"
 #include "cuComplex.h"
 
-__global__ void cuda_hello(){
-    printf("Hello World from GPU!\n");
-}
-
 __global__ void calculate_beamweights_naive(
                                 struct timespec current_time, 
                                 struct timespec ref_time,
@@ -14,7 +10,7 @@ __global__ void calculate_beamweights_naive(
 {
     //size_t delay_vals_length = 64*300;//n_antennas*n_beams;
     //__shared__ struct delay_vals_extended dv_shared[NUM_THREADS_PER_BLOCK];
-    int blockId = blockIdx.x+ blockIdx.y * gridDim.x+ gridDim.x * gridDim.y * blockIdx.z;
+    //int blockId = blockIdx.x+ blockIdx.y * gridDim.x+ gridDim.x * gridDim.y * blockIdx.z;
     int interChannelIndex = blockIdx.x*blockDim.x + threadIdx.x;
     if(interChannelIndex < NR_BEAMS*NR_STATIONS){
         //Determine Correct Indices
@@ -25,6 +21,7 @@ __global__ void calculate_beamweights_naive(
 
         //Calculate Values
         //dv_shared[threadIdx.x] = dv[antIndex*NR_BEAMS + beamIndex];
+        //float tempValue = dv[antIndex*NR_BEAMS + beamIndex].fDelay_s;
         struct delay_vals sDelayVal = dv[antIndex*NR_BEAMS + beamIndex];
         //struct delay_vals my_dv = dv[antIndex*n_beams + beamIndex];
         //1
@@ -43,7 +40,7 @@ __global__ void calculate_beamweights_naive(
         float fRotation = fDelayN + fPhase0;
         float fSteeringCoeffCorrectReal = cos(fRotation);//At least i think its the real one - may need to check this if its important
         float fSteeringCoeffCorrectImag = sin(fRotation);
-
+        //printf("%f\n" , fDeltaTime);
         //printf("%f\n",rotation);
         ((cuFloatComplex*)cplx_beamweights)[(channelIndex*NR_STATIONS*NR_BEAMS + interChannelIndex)] = make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
         //if((channelIndex*NR_STATIONS*NR_BEAMS + interChannelIndex)*2==1680){

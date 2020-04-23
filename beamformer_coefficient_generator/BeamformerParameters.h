@@ -2,9 +2,9 @@
 
 #define NR_CHANNELS 64 //Number of frequency channels
 //#define NR_POLARIZATIONS Just one for now, but I would eventually like to generalise it.
-#define NR_SAMPLES_PER_CHANNEL 256 //Number of time samples per channel
+#define NR_SAMPLES_PER_CHANNEL 64 //Number of time samples per channel
 #define NR_STATIONS 84 //NUmber of antennas
-#define NR_BEAMS 10
+#define NR_BEAMS 100
 
 //Values used to calculate delays
 #define SAMPLING_PERIOD 1e-9f
