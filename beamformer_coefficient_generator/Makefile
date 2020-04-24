@@ -2,7 +2,7 @@
 
 # Compiler and linker
 CC := nvcc
-CCFLAGS := -arch=sm_61 --ptxas-options='-v -warn-double-usage -warn-lmem-usage -warn-spills' -lineinfo
+CCFLAGS := -arch=sm_61 --ptxas-options='-v -warn-double-usage -warn-lmem-usage -warn-spills' -lineinfo 
 
 # Target executable program
 TARGET = BeamformerCoefficientTest

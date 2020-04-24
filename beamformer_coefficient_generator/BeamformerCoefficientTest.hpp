@@ -10,6 +10,10 @@
 class BeamformerCoeffTest : public UnitTest
 {
     public:
+        /** This enum is used on initialisation of the BeamformerCoeffTest object. It allows the 
+         *  user to determine what kernel implementation of the beamformer to use. This is ueful
+         *  for testing purposes.
+         */
         enum SteeringCoefficientKernel
         {
             NAIVE
@@ -30,7 +34,7 @@ class BeamformerCoeffTest : public UnitTest
         void verify_output() override;
 
     private:
-        //Level of tolerance to use when checking beamformer values to correct values
+        //Level of tolerance to use when checking beamformer values equal correct values
         float m_fFloatingPointTolerance;
 
         //Host pointers
@@ -52,9 +56,10 @@ class BeamformerCoeffTest : public UnitTest
         //Delay rate specific values
         struct timespec m_sReferenceTime_ns;
 
-        //Kernel to use
+        //This stores the kernel that will be executed
         SteeringCoefficientKernel  m_eKernelOption;
 
+        ///Generates the kernel dimensions. This is called in the constructor and the only reason that it is a seperate function is to keep the constructor clean. 
         void generate_GPU_kernel_dimensions();
 };
 

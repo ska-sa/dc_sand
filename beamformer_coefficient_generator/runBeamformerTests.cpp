@@ -5,11 +5,11 @@
 int main()
 {
     
-    BeamformerCoeffTest beamformerCoeffTest(1e-6f, BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE);
-    beamformerCoeffTest.run_test();
+    BeamformerCoeffTest oBeamformerCoeffTest(1e-6f, BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE);
+    oBeamformerCoeffTest.run_test();
     
-    std::cout << beamformerCoeffTest.get_result() << "\n";
-    beamformerCoeffTest.get_time();
+    std::cout << oBeamformerCoeffTest.get_result() << "\n";
+    oBeamformerCoeffTest.get_time();
 
     return 0;
 }

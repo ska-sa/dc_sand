@@ -8,8 +8,8 @@
 #include "Utils.hpp"
 //#include "Kernels.cu"
 
+// Give the difference between two timespecs, in floats.
 float ts_diff(struct timespec first, struct timespec last)
-// Give the difference between two timespecs, in floats. For opencl calculations.
 {
     float time_difference = (float) last.tv_sec - (float) first.tv_sec;
     long nanosec_difference = last.tv_nsec - first.tv_nsec;
@@ -25,7 +25,7 @@ BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, Beamform
 {   
     std::cout << m_ulSizeSteeringCoefficients/1000.0/1000.0 << " MB Allocated" << std::endl;
     std::cout << m_ulSizeDelayValues/1000.0/1000.0 << " MB Allocated" << std::endl;
-    //Get timestamp of now
+    //Generate a single reference time on initialisation
     struct timespec m_sReferenceTime_ns;
     clock_gettime(CLOCK_MONOTONIC, &m_sReferenceTime_ns);
      #define TIME_SHIFT  50000
@@ -60,63 +60,65 @@ BeamformerCoeffTest::~BeamformerCoeffTest()
 void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
     switch (m_eKernelOption)
     {
+    //Refer to corresponding kernel functions for explanations as to how these blocks are generated
     case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
-        int numSamplesPerChannel = NR_STATIONS*NR_BEAMS;
-        int numBlocksPerChannel = numSamplesPerChannel/NUM_THREADS_PER_BLOCK;
-        int threadsPerBlock = 0;
-        if(numSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
-            numBlocksPerChannel++;
+        size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
+        size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
+        size_t ulNumThreadsPerBlock = 0;
+        if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
+            ulNumBlocksPerChannel++;
         }
-        if(numBlocksPerChannel > 1){
-            threadsPerBlock = NUM_THREADS_PER_BLOCK;
+        if(ulNumBlocksPerChannel > 1){
+            ulNumThreadsPerBlock = NUM_THREADS_PER_BLOCK;
         }else{
-            threadsPerBlock = numSamplesPerChannel;
+            ulNumThreadsPerBlock = ulNumSamplesPerChannel;
         }
-        m_cudaGridSize = dim3(numBlocksPerChannel,NR_STATIONS);//dim3(7,1);//
-        m_cudaBlockSize = dim3(threadsPerBlock);
+        m_cudaGridSize = dim3(ulNumBlocksPerChannel,NR_CHANNELS);//dim3(7,1);//
+        m_cudaBlockSize = dim3(ulNumThreadsPerBlock);
         break;
     }
 }
 
 void BeamformerCoeffTest::simulate_input()
 {
-    switch (m_eKernelOption)
+    //Generates a delay value for every antenna-beam combination
+    size_t ulNumDelayVelays = NR_STATIONS*NR_BEAMS;
+    for (size_t i = 0; i < NR_STATIONS*NR_BEAMS; i++)
     {
-        case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE:
-        
-        size_t ulNumDelayVelays = NR_STATIONS*NR_BEAMS;
-        for (size_t i = 0; i < NR_STATIONS*NR_BEAMS; i++)
-        {
-            m_pHDelayValues[i].fDelay_s = ((float)i/ulNumDelayVelays)*SAMPLING_PERIOD/3; //let's make them in a linear ramp
-            m_pHDelayValues[i].fDelayRate_sps = 2e-11;
-            m_pHDelayValues[i].fPhase_rad = (1 -((float)i/ulNumDelayVelays))*SAMPLING_PERIOD/3;
-            m_pHDelayValues[i].fPhaseRate_radps = 3e-11;
-        }
-        break;
+        m_pHDelayValues[i].fDelay_s = ((float)i/ulNumDelayVelays)*SAMPLING_PERIOD/3; //let's make them in a linear ramp
+        m_pHDelayValues[i].fDelayRate_sps = 2e-11;
+        m_pHDelayValues[i].fPhase_rad = (1 -((float)i/ulNumDelayVelays))*SAMPLING_PERIOD/3;
+        m_pHDelayValues[i].fPhaseRate_radps = 3e-11;
     }
 }
 
 void BeamformerCoeffTest::transfer_HtoD()
 {
+    std::cout << "Transferring " << m_ulSizeDelayValues/1000.0/1000.0 << " MB to device" << std::endl;
     GPU_ERRCHK(cudaMemcpy(m_pDDelayValues,m_pHDelayValues,m_ulSizeDelayValues,cudaMemcpyHostToDevice));
 }
 
 void BeamformerCoeffTest::run_kernel()
 {
-    
-    for (size_t i = 0; i < NR_SAMPLES_PER_CHANNEL; i++)
+    switch (m_eKernelOption)
     {
-        //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
-        struct timespec sCurrentTime_ns;
-        sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
-        long timeStep = i*SAMPLING_PERIOD*1e9*FFT_SIZE;
-        sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + timeStep;
-        calculate_beamweights_naive<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*i);   
+        case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
+        for (size_t ulTimeIndex = 0; ulTimeIndex < NR_SAMPLES_PER_CHANNEL; ulTimeIndex++)
+        {
+            //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
+            struct timespec sCurrentTime_ns;
+            sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
+            long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
+            sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
+            calculate_beamweights_naive<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);   
+        }
+        break;
     }
 }
 
 void BeamformerCoeffTest::transfer_DtoH()
 {
+    std::cout << "Transferring " << m_ulSizeSteeringCoefficients/1000.0/1000.0 << " MB to host" << std::endl;
     GPU_ERRCHK(cudaMemcpy(m_pfHSteeringCoeffs,m_pfDSteeringCoeffs,m_ulSizeSteeringCoefficients,cudaMemcpyDeviceToHost));
 }
 
@@ -134,7 +136,7 @@ void BeamformerCoeffTest::verify_output()
         //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
         struct timespec sCurrentTime_ns;
         sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
-        long timeStep = t*SAMPLING_PERIOD*1e9*FFT_SIZE;
+        long timeStep = t*SAMPLING_PERIOD*1e9f*FFT_SIZE;
         sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + timeStep;
         for (size_t c = 0; c < NR_CHANNELS; c++)
         {
@@ -146,8 +148,8 @@ void BeamformerCoeffTest::verify_output()
                     struct delay_vals sDelayVal = m_pHDelayValues[a*NR_BEAMS + b];
                     float fDeltaTime = ts_diff(m_sReferenceTime_ns, sCurrentTime_ns);
                     float fDeltaDelay = sDelayVal.fDelayRate_sps*fDeltaTime;
-                    float fDelayN = (sDelayVal.fDelayRate_sps + fDeltaDelay)*c*M_PI/(SAMPLING_PERIOD*NR_CHANNELS);
-                    float fDelayN2 = (sDelayVal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*M_PI/(SAMPLING_PERIOD*NR_CHANNELS);
+                    float fDelayN = (sDelayVal.fDelayRate_sps + fDeltaDelay)*c*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+                    float fDelayN2 = (sDelayVal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
                     float fDeltaPhase = sDelayVal.fPhaseRate_radps*fDeltaTime;
                     float fPhase0 = sDelayVal.fPhase_rad - fDelayN2 + fDeltaPhase;
                     float fRotation = fDelayN + fPhase0;
@@ -166,13 +168,16 @@ void BeamformerCoeffTest::verify_output()
     auto end = std::chrono::steady_clock::now();
     std::cout << "CPU took " << (float)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()/1000.0 << " ms to generate correct steering coefficients." << std::endl;
 
+    //int temp = 0;
     //Compare correct data to GPU generated data - this loop could be combined with the above loop, however this way makes it easier to time the CPU execution and add extra debug data if necessary
     for (size_t i = 0; i < NR_SAMPLES_PER_CHANNEL*NR_STATIONS*NR_CHANNELS*NR_BEAMS*2; i++)
     {
-        if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectDate[i]) > m_fFloatingPointTolerance){
-            //std::cout << "Index: " << i << ". Generated Value: " << m_pfHSteeringCoeffs[i] << ". Correct Value: " << fCorrectDate[i] << std::endl;
-            m_iResult = -1;
-            return;
+        if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectDate[i]) > m_fFloatingPointTolerance /*|| (i > 49950)*/){
+            std::cout << "Index: " << i << ". Generated Value: " << m_pfHSteeringCoeffs[i] << ". Correct Value: " << fCorrectDate[i] << std::endl;
+            //if(temp++ == 100){
+                m_iResult = -1;
+                return;
+            //}
         }
     }
 
