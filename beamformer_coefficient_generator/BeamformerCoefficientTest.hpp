@@ -18,7 +18,8 @@ class BeamformerCoeffTest : public UnitTest
          */
         enum SteeringCoefficientKernel
         {
-            NAIVE
+            NAIVE,
+            MULTIPLE_CHANNELS
         };
 
         BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);
@@ -32,6 +33,10 @@ class BeamformerCoeffTest : public UnitTest
          *              for mapping number of antennas to the number of GPUs. 
          */ 
         float get_time() override;
+
+        float get_gpu_utilisation_per_single_time_unit();
+
+        float get_gpu_utilisation_per_multiple_time_units();
 
     protected:
         void simulate_input() override;
@@ -67,11 +72,16 @@ class BeamformerCoeffTest : public UnitTest
         //Delay rate specific values
         struct timespec m_sReferenceTime_ns;
 
+        //GPU Utilisation for various lengths of time. Calculated in get_time() method
+        float m_fGpuUtilisation_SingleTimeUnit;
+        float m_fGpuUtilisation_MultipleTimeUnits;
+
         //This stores the kernel that will be executed
         SteeringCoefficientKernel  m_eKernelOption;
 
         ///Generates the kernel dimensions. This is called in the constructor and the only reason that it is a seperate function is to keep the constructor clean. 
         void generate_GPU_kernel_dimensions();
+
 };
 
 #endif

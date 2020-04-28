@@ -19,6 +19,9 @@
  */ 
 #define NUM_THREADS_PER_BLOCK 128
 
+
+#define NUM_CHANNELS_PER_KERNEL 64
+
 /** \brief Delay values struct that stores the values transmitted from the SARAO CAM team.
  * 
  *  \details Delay values struct that stores the values transmitted from the SARAO CAM team.

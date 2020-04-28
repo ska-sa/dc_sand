@@ -62,21 +62,47 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
     {
     //Refer to corresponding kernel functions for explanations as to how these blocks are generated
     case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
-        size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
-        size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
-        size_t ulNumThreadsPerBlock = 0;
-        if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
-            ulNumBlocksPerChannel++;
+        {
+            size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
+            size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
+            size_t ulNumThreadsPerBlock = 0;
+            if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
+                ulNumBlocksPerChannel++;
+            }
+            if(ulNumBlocksPerChannel > 1){
+                ulNumThreadsPerBlock = NUM_THREADS_PER_BLOCK;
+            }else{
+                ulNumThreadsPerBlock = ulNumSamplesPerChannel;
+            }
+            m_cudaGridSize = dim3(ulNumBlocksPerChannel,NR_CHANNELS);//dim3(7,1);//
+            m_cudaBlockSize = dim3(ulNumThreadsPerBlock);
         }
-        if(ulNumBlocksPerChannel > 1){
-            ulNumThreadsPerBlock = NUM_THREADS_PER_BLOCK;
-        }else{
-            ulNumThreadsPerBlock = ulNumSamplesPerChannel;
+        break;
+
+    case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS :
+        {
+            int numSamplesPerChannel = NR_STATIONS*NR_BEAMS;
+            int numBlocksPerChannel = numSamplesPerChannel/NUM_THREADS_PER_BLOCK;
+            int threadsPerBlock = 0;
+            if(numSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
+                numBlocksPerChannel++;
+            }
+            if(numBlocksPerChannel > 1){
+                threadsPerBlock = NUM_THREADS_PER_BLOCK;
+            }else{
+                threadsPerBlock = numSamplesPerChannel;
+            }
+            int gridSizeChannels = NR_CHANNELS/NUM_CHANNELS_PER_KERNEL;
+            if(NR_CHANNELS % NUM_CHANNELS_PER_KERNEL != 0){
+                gridSizeChannels++;
+            }
+            m_cudaGridSize = dim3(numBlocksPerChannel,gridSizeChannels);
+            m_cudaBlockSize = dim3(threadsPerBlock);
         }
-        m_cudaGridSize = dim3(ulNumBlocksPerChannel,NR_CHANNELS);//dim3(7,1);//
-        m_cudaBlockSize = dim3(ulNumThreadsPerBlock);
         break;
     }
+
+    
 }
 
 void BeamformerCoeffTest::simulate_input()
@@ -111,6 +137,18 @@ void BeamformerCoeffTest::run_kernel()
             long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
             sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
             calculate_beamweights_naive<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);   
+        }
+        break;
+
+        case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS :
+        for (size_t ulTimeIndex = 0; ulTimeIndex < NR_SAMPLES_PER_CHANNEL; ulTimeIndex++)
+        {
+            //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
+            struct timespec sCurrentTime_ns;
+            sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
+            long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
+            sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
+            calculate_beamweights_grouped_channels<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);
         }
         break;
     }
@@ -190,7 +228,8 @@ float BeamformerCoeffTest::get_time(){
     float fRateOfFFTs_Hz = ((float)ADC_SAMPLE_RATE)/((float)FFT_SIZE);
     float fInputPacketSizePerFFT_Bytes = ((float)FFT_SIZE/2.0)/((float) NR_STATIONS) * NR_POLARIZATIONS * 2 * 8 * NR_STATIONS;
     float fTransferTimePerPacket_s = 1/fRateOfFFTs_Hz;
-    float fGpuUtilisation = (m_fKernelElapsedTime_ms/1000.0)/(NR_SAMPLES_PER_CHANNEL*fTransferTimePerPacket_s);
+    m_fGpuUtilisation_SingleTimeUnit = (m_fKernelElapsedTime_ms/1000.0)/(NR_SAMPLES_PER_CHANNEL*fTransferTimePerPacket_s);
+    m_fGpuUtilisation_MultipleTimeUnits = m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS);
 
     std::cout << "FFTs Per Second: " << fRateOfFFTs_Hz << " Hz" << std::endl;
     std::cout << "Size of X-Engine input per FFT: " << fInputPacketSizePerFFT_Bytes << " bytes" <<std::endl;
@@ -202,10 +241,18 @@ float BeamformerCoeffTest::get_time(){
     for (size_t i = 1; i < 4; i+=2)
     {
         std::cout << "With an X-Engine Ingest rate of " << fRateOfFFTs_Hz*fInputPacketSizePerFFT_Bytes/1e9f*(i+1) << " Gbps (" <<(i+1)<<" MeerKAT Polarisations)."<< std::endl;
-        std::cout << "\tGPUs required with a 1:1 ratio of steering coefficients to input data: " << fGpuUtilisation*(i+1) << std::endl;
-        std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << fGpuUtilisation/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i+1) << std::endl;
+        std::cout << "\tGPUs required with a 1:1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit*(i+1) << std::endl;
+        std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i+1) << std::endl;
         std::cout << std::endl;
     }
     
     UnitTest::get_time();
+}
+
+float BeamformerCoeffTest::get_gpu_utilisation_per_single_time_unit(){
+    return m_fGpuUtilisation_SingleTimeUnit;
+}
+
+float BeamformerCoeffTest::get_gpu_utilisation_per_multiple_time_units(){
+    return m_fGpuUtilisation_MultipleTimeUnits;
 }
