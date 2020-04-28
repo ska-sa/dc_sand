@@ -10,9 +10,9 @@
 //Set to 1 to use huge pages. Remanant of old code from SDP. This could be adjusted so that this is a parameter in the allocate function
 #define HUGE_PAGES 0
 
-/** Function to allocate memory. Using mmap instead of malloc as it allows for hugh pages to be used.
+/** Function to allocate memory. Using mmap instead of malloc as it allows for huge pages to be used.
  *  \param size Size in bytes to allocate 
- *  \param useHughPages set to 0 to not use hugh pages. Hugh pages need to be configured correctly on unix OS or else this throws an error when trying to allocate hugh pages
+ *  \param useHugePages Set to 0 to not use huge pages. Huge pages need to be configured correctly on unix OS or else this throws an error when trying to allocate huge pages.
  */
 
 static char *allocate(std::size_t size, uint8_t useHugePages)
@@ -25,14 +25,15 @@ static char *allocate(std::size_t size, uint8_t useHugePages)
     return (char *) addr;
 }
 
-/** Assembler code to perform an unrolled write to RAM using the 256-bit AVX registers. For some reason writing to RAM 
+/** \brief Assembler code to perform an unrolled write to RAM using the 256-bit AVX registers.
+ * 
+ *  \details Assembler code to perform an unrolled write to RAM using the 256-bit AVX registers. For some reason writing to RAM 
  *  reports an order of magnitude faster data rates than reading from RAM. I do not think this is correct but I would need
  *  to investigate further.
- *  \param memarea  Pointer to buffer to write data to. Pointer should have been allocated with \ref allocate() function
- *  \param size     Number of bytes to write in a single transfer
- *  \param repeats  Number of times to repeat the transfer
+ *  \param memarea  Pointer to buffer to write data to. Pointer should have been allocated with \ref allocate() function.
+ *  \param size     Number of bytes to write in a single transfer.
+ *  \param repeats  Number of times to repeat the transfer.
  */
-
 void ScanWrite256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
 {
     uint64_t value = 0xC0FFEEEEBABE0000;
@@ -72,10 +73,10 @@ void ScanWrite256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
 }
 
 
-/** Assembler code to perform an unrolled read to RAM using the 256-bit AVX registers.
- *  \param memarea  Pointer to buffer to read data from. Pointer should have been allocated with \ref allocate() function
- *  \param size     Number of bytes to read in a single transfer
- *  \param repeats  Number of times to repeat the transfer
+/** Assembler code to perform an unrolled read from RAM using the 256-bit AVX registers.
+ *  \param memarea  Pointer to buffer to read data from. Pointer should have been allocated with \ref allocate() function.
+ *  \param size     Number of bytes to read in a single transfer.
+ *  \param repeats  Number of times to repeat the transfer.
  */
 void ScanRead256PtrUnrollLoop(char* memarea, size_t size, size_t repeats)
 {

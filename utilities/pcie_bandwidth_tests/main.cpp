@@ -1,14 +1,8 @@
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <cstdint>
-#include <sstream>
-#include <iostream>
-#include <iomanip>
-#include <cstring>
-#include <boost/program_options.hpp>
-#include <string>
-#include <limits>
-#include <omp.h>
+#include <cstdint> // Standard integer types
+#include <iostream> // to print information to the terminal
+#include <iomanip> // to manipulate the output being sent to std::cout (std::setprecision, std::setw)
+#include <boost/program_options.hpp> // for command line parsing 
+#include <omp.h> // for OpenMP tools allowing for multi-threading using #pragmas
 
 #include "cudaPcieRateTest.hpp"
 #include "memRateTest.hpp"
@@ -19,16 +13,18 @@
 #define DEFAULT_FRAME_SIZE_BYTES 5000000
 
 int main(int argc, char** argv){
+    
+    //Without this command, omp pragmas within a thread created by a previous omp thread will not create new threads - they will run sequentially. This command allows for nested thread creation.
     omp_set_nested(1);
 
-    /// Set up command line arguments
+    // Set up command line arguments
     boost::program_options::options_description clDescription("Allowed options");
     clDescription.add_options()
         ("help,h", "Produce help message")
         ("mem_bw_test,b", "Perform memcpy test")
         ("h2d,d", "Enable host to device stream")
         ("d2h,s", "Enable device to host stream")
-        ("use_huge_pages,p", "Enables hugh memory pages. Not all Unix systems will support this by default")
+        ("use_huge_pages,p", "Enables huge memory pages. Not all Unix systems will support this by default")
         ("csv,c", "Disables all human readable text and instead outputs the data in a csv format for easier exporting to external programs")
         ("list_gpus,l", "List GPUs available on the current server")
         ("gpu_id_mask,g", boost::program_options::value<int32_t>()->default_value(0) ,"Mask to set which GPUs to use e.g. 0101 will use GPU 0 and 2 while skipping 1 and 3")
@@ -60,27 +56,30 @@ int main(int argc, char** argv){
     if (clVariableMap.count("help"))
     {
         std::cout << clDescription << "\n";
-        return 1;
+        return 0;
     }
 
     if (clVariableMap.count("list_gpus"))
     {
         CudaPcieRateTest::list_gpus();
         std::cout << std::endl;
-        return 1;
+        return 0;
     }
 
-    bool useHughPages = false;
+    bool useHugePages = false;
     if (clVariableMap.count("use_huge_pages"))
     {
-        useHughPages=true;
+        useHugePages=true;
     }
     if(!bCsvMode)
     {
-        if(useHughPages){
-            std::cout << "Hugh memory pages enabled" <<std::endl;
-        }else{
-            std::cout << "Hugh memory pages not enabled" <<std::endl;
+        if(useHugePages)
+        {
+            std::cout << "Huge memory pages enabled" <<std::endl;
+        }
+        else
+        {
+            std::cout << "Huge memory pages not enabled" <<std::endl;
         }
     }
     
@@ -88,33 +87,37 @@ int main(int argc, char** argv){
     int64_t i64TestLength_s = clVariableMap["time_per_test_s"].as<int64_t>();
     if(i64TestLength_s<=0){
         std::cout << "ERROR: Time per test needs to be greater than 0" << std::endl;
-        return -1;
+        return 1;
     }
-    int64_t i64MinThreads = clVariableMap["min_threads"].as<int64_t>();
-    int64_t i64MaxThreads = clVariableMap["max_threads"].as<int64_t>();
+    size_t ulMinThreads = clVariableMap["min_threads"].as<int64_t>();
+    size_t ulMaxThreads = clVariableMap["max_threads"].as<int64_t>();
     //Configure RAM bandwidth test
     bool bPerformMemBWTest = false;
     
     if (clVariableMap.count("mem_bw_test"))
     {
         bPerformMemBWTest = true;
-        if(i64MinThreads>i64MaxThreads){
+        if(ulMinThreads > ulMaxThreads)
+        {
             std::cout << "ERROR: Minimum threads is greater than maximum threads" << std::endl;
-            return -1;
+            return 1;
         }
-        if(i64MinThreads < 0 || i64MaxThreads < 0){
+        if(ulMinThreads < 0 || ulMaxThreads < 0)
+        {
             std::cout << "ERROR: Number of threads needs to be <=0" << std::endl;
-            return -1;
+            return 1;
         }
         if(!bCsvMode)
         {
-            std::cout << "Testing System RAM Bandwidth with a thread count ranging from " << i64MinThreads << " to " << i64MaxThreads << std::endl;
+            std::cout << "Testing System RAM Bandwidth with a thread count ranging from " << ulMinThreads << " to " << ulMaxThreads << std::endl;
         }
-    }else{
-        i64MinThreads = 1;
-        i64MaxThreads = 1;
     }
-    omp_set_num_threads(i64MaxThreads + 20);
+    else
+    {
+        ulMinThreads = 1;
+        ulMaxThreads = 1;
+    }
+    omp_set_num_threads(ulMaxThreads + 20);
 
     //Configure PCIe bandwidth Tests
     int i32DevicesCount;
@@ -143,7 +146,7 @@ int main(int argc, char** argv){
         if(!bD2H && !bH2D)
         {
             std::cout << "ERROR: No PCIe transfer direction specified" << std::endl;
-            return -1;
+            return 1;
         }
         for (int32_t i32DeviceId = 0; i32DeviceId < i32DevicesCount; i32DeviceId++)
         {
@@ -167,7 +170,7 @@ int main(int argc, char** argv){
 
     if(pbUseGPU==0 && bPerformMemBWTest==false){
         std::cout << "ERROR: Need to use at least -m or -g 1 flags. At the moment no tests are specified. " << std::endl;
-        return -1;
+        return 1;
     }
         
     
@@ -188,7 +191,7 @@ int main(int argc, char** argv){
     }
 
     //Iterates through bandwidth tests incrementing the number of threads performing ram copies. i32Thread
-    for (int32_t i32ThreadCount = i64MinThreads; i32ThreadCount < i64MaxThreads+1; i32ThreadCount++)
+    for (int32_t i32ThreadCount = ulMinThreads; i32ThreadCount < ulMaxThreads+1; i32ThreadCount++)
     {
         float fMemRate_GBps;
         float fPcieRate_Gbps[i32DevicesCount];
@@ -201,7 +204,7 @@ int main(int argc, char** argv){
                 //Performs memory bandwidth tests
                 if(bPerformMemBWTest)
                 {
-                    MemRateTest memRateTest(i32ThreadCount,256*2048*2048,useHughPages);    
+                    MemRateTest memRateTest(i32ThreadCount,256*2048*2048,useHugePages);    
                     fMemRate_GBps = memRateTest.transferForLenghtOfTime(i64TestLength_s);
                 }
             }

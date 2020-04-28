@@ -1,11 +1,8 @@
 #ifndef PCIE_RATE_TEST_H
 #define PCIE_RATE_TEST_H
 
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <cstdint>
-#include <iostream>
-#include <cstring>
+#include <cstdint> // For access to different integer types
+#include <cstddef> //Access to size_t
 
 /** \class      PcieRateTest
  *  \brief      Measure the data rate between system RAM and a given PCIe device
@@ -40,7 +37,7 @@ class PcieRateTest
         *   transfers a frame across the PCIe bus. A single buffer is allocated on the device - this 
         *   buffer consists of a number of frames.
         */
-        PcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, int64_t ulFrameSizeBytes,bool bH2D, bool bD2H);
+        PcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, int64_t ulFrameSizeBytes, bool bH2D, bool bD2H);
 
         /// Device ID of the PCIe device to use. This is implementation specific. Different child classes will assign different device IDs to supported devices
         int32_t m_i32DeviceId;

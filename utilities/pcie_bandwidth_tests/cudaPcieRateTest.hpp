@@ -1,19 +1,17 @@
 #ifndef CUDA_PCIE_RATE_TEST_H
 #define CUDA_PCIE_RATE_TEST_H
 
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <cstdint>
-#include <iostream>
-#include <cstring>
-#include "../../common/Utils.hpp"
+#include <cuda_runtime.h> // Required to use CUDA.
+#include <cuda.h> // Required to use CUDA.
+#include <cstdint> // For standard integer types.
+#include "../../common/Utils.hpp" // For CUDA error checking wrapper.
 #include "pcieRateTest.hpp"
 
 /// Defines number of events to use for synchronisation
 #define NUM_SYNC_EVENTS 200
 
 /** \class   CudaPcieRateTest
- *  \brief   CUDA-specific implementation of the PcieRateTest class
+ *  \brief   CUDA-specific implementation of the PcieRateTest class.
  *  \details Implements all functions required by the PcieRateTest class for CUDA specific devices.
  */
 class CudaPcieRateTest : public PcieRateTest
@@ -30,23 +28,23 @@ class CudaPcieRateTest : public PcieRateTest
         static void list_gpus();
 
     protected:
-        /// Host pointer to store data for host to device transfers
+        /// Host pointer to store data for host to device transfers.
         int8_t * m_pi32HInput;
-        /// Host pointer to store data for device to host transfers
+        /// Host pointer to store data for device to host transfers.
         int8_t * m_pi32HOutput; 
-        /// Device pointer to store data for both device to host and host to device transfers
+        /// Device pointer to store data for both device to host and host to device transfers.
         int8_t * m_pi32DGpuArray;
 
-        /// Stream for host to device data transfers
+        /// Stream for host to device data transfers.
         cudaStream_t m_streamH2D;
-        /// Stream for device to host data transfers
+        /// Stream for device to host data transfers.
         cudaStream_t m_streamD2H;
 
-        /// CUDA event for logging the starting time of a data stream
+        /// CUDA event for logging the starting time of a data stream.
         cudaEvent_t m_eventStart;
-        /// CUDA event for logging the ending time of a data stream
+        /// CUDA event for logging the ending time of a data stream.
         cudaEvent_t m_eventEnd;
-        /// CUDA events for syncing the H2D and D2H transfers so that the same frame is not transmitted and received simultaneously
+        /// CUDA events for syncing the H2D and D2H transfers so that the same frame is not transmitted and received simultaneously.
         cudaEvent_t m_pEventSync[NUM_SYNC_EVENTS];
 };
 

@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <iostream>
-#include <string.h>
 
 /** \class      MemRateTest
  *  \brief      Measure the system RAM bandwidth
@@ -23,25 +21,25 @@ class MemRateTest
         MemRateTest() = delete;
 
         /** Constructs the MemRateTest class. Sets the nmber of threads that must transfer as well as 
-         *  the amount of memory to be allocated by a single thread
-         *  \param i32NumThreads Specify the number of threads to transfer in parallel
-         *  \param i32BufferSize_bytes Specify the size of the buffer in bytes to allocate per thread
+         *  the amount of memory to be allocated by a single thread.
+         *  \param i32NumThreads Specify the number of threads to transfer in parallel.
+         *  \param i32BufferSize_bytes Specify the size of the buffer in bytes to allocate per thread.
          *  \param useHughPages Set true to use hugh pages. Will throw an error if OS is not configured properly
          */
         MemRateTest(size_t ulNumThreads, size_t ulBufferSize_bytes, bool useHugePages);
 
-        /// Destructor releases all assigned buffers
+        /// Destructor releases all assigned buffers.
         ~MemRateTest();
 
         /** Reads data from RAM and benchmarks the transfer rate.
         *  \param i64NumTransfers Specifies the number of times to read data from the entire buffer. 
-        *  \return Returns the rate in GBps that the data was read from RAM
+        *  \return Returns the rate in GBps that the data was read from RAM.
         */
         float transfer(int64_t i64NumTransfers);
 
         /** Reads data from RAM for a specific period of time and benchmarks the transfer rate.
         *  \param i64NumSeconds_s Specifies the number of seconds to spend reading data from the entire buffer. 
-        *  \return Returns the rate in GBps that the data was read from RAM
+        *  \return Returns the rate in GBps that the data was read from RAM.
         */
         float transferForLenghtOfTime(int64_t i64NumSeconds_s);
         

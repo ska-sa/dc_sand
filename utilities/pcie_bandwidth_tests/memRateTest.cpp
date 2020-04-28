@@ -5,7 +5,8 @@
 #include <sys/mman.h>
 
 MemRateTest::MemRateTest(size_t ulNumThreads, size_t ulBufferSize_bytes,bool useHugePages): 
-    m_ulNumThreads(ulNumThreads),m_ulBufferSize_bytes(ulBufferSize_bytes)
+    m_ulNumThreads(ulNumThreads),
+    m_ulBufferSize_bytes(ulBufferSize_bytes)
 {
     //Create a buffer for every thread
     m_ppMemArrays = new char*[ulNumThreads];
@@ -53,7 +54,6 @@ float MemRateTest::transfer(int64_t i64NumTransfers){
         fCombinedRate_GBps+=fRate;
     }
     return fCombinedRate_GBps;
-
 }
 
 float MemRateTest::transferForLenghtOfTime(int64_t i64NumSeconds_s){

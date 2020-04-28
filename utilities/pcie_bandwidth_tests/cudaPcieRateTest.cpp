@@ -1,8 +1,9 @@
 #include "cudaPcieRateTest.hpp"
 #include <chrono>
+#include <iostream>
 
-CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, size_t ulFrameSizeBytes ,bool bH2D, bool bD2H):
-    PcieRateTest(i32DeviceId ,ulNumFrames ,ulFrameSizeBytes, bH2D, bD2H)
+CudaPcieRateTest::CudaPcieRateTest(int32_t i32DeviceId, size_t ulNumFrames, size_t ulFrameSizeBytes, bool bH2D, bool bD2H):
+    PcieRateTest(i32DeviceId, ulNumFrames, ulFrameSizeBytes, bH2D, bD2H)
 {   
     // Allocates device and host CUDA buffers, creates all required streams and syncrhonisation events
     GPU_ERRCHK(cudaSetDevice(m_i32DeviceId));

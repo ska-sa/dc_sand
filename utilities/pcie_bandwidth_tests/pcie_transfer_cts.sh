@@ -1,5 +1,5 @@
 #!/bin/bash
-#Script for continously transferring data to the PCIe devices. Will output rate to terminal every 20 seconds
+#Script for continously transferring data to the PCIe devices. Will output rate to terminal every 20 seconds.
 
 echo "PCIe Continous Transfer Script"
 
