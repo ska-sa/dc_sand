@@ -185,3 +185,27 @@ void BeamformerCoeffTest::verify_output()
     
     m_iResult = 1;
 }
+
+float BeamformerCoeffTest::get_time(){
+    float fRateOfFFTs_Hz = ((float)ADC_SAMPLE_RATE)/((float)FFT_SIZE);
+    float fInputPacketSizePerFFT_Bytes = ((float)FFT_SIZE/2.0)/((float) NR_STATIONS) * NR_POLARIZATIONS * 2 * 8 * NR_STATIONS;
+    float fTransferTimePerPacket_s = 1/fRateOfFFTs_Hz;
+    float fGpuUtilisation = (m_fKernelElapsedTime_ms/1000.0)/(NR_SAMPLES_PER_CHANNEL*fTransferTimePerPacket_s);
+
+    std::cout << "FFTs Per Second: " << fRateOfFFTs_Hz << " Hz" << std::endl;
+    std::cout << "Size of X-Engine input per FFT: " << fInputPacketSizePerFFT_Bytes << " bytes" <<std::endl;
+    std::cout << "Time to transfer a single packet: " << 1/fRateOfFFTs_Hz << " s" << std::endl;
+    std::cout << "Time to transfer " << NR_SAMPLES_PER_CHANNEL << " packets: " << NR_SAMPLES_PER_CHANNEL/fRateOfFFTs_Hz << " s" << std::endl;
+    std::cout << "Time to generate steering coefficients for " << NR_SAMPLES_PER_CHANNEL << " packets: " << m_fKernelElapsedTime_ms/1000.0 << " s" << std::endl;
+    std::cout << std::endl;
+    
+    for (size_t i = 1; i < 4; i+=2)
+    {
+        std::cout << "With an X-Engine Ingest rate of " << fRateOfFFTs_Hz*fInputPacketSizePerFFT_Bytes/1e9f*(i+1) << " Gbps (" <<(i+1)<<" MeerKAT Polarisations)."<< std::endl;
+        std::cout << "\tGPUs required with a 1:1 ratio of steering coefficients to input data: " << fGpuUtilisation*(i+1) << std::endl;
+        std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << fGpuUtilisation/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i+1) << std::endl;
+        std::cout << std::endl;
+    }
+    
+    UnitTest::get_time();
+}

@@ -10,9 +10,11 @@
 class BeamformerCoeffTest : public UnitTest
 {
     public:
-        /** This enum is used on initialisation of the BeamformerCoeffTest object. It allows the 
-         *  user to determine what kernel implementation of the beamformer to use. This is ueful
-         *  for testing purposes.
+        /** \brief      Used to specify the GPU kernel that will generate the steering coefficients 
+         * 
+         *  \details    This enum is used on initialisation of the BeamformerCoeffTest object. It allows the 
+         *              user to determine what kernel implementation of the beamformer to use. This is ueful
+         *              for testing purposes.
          */
         enum SteeringCoefficientKernel
         {
@@ -21,6 +23,15 @@ class BeamformerCoeffTest : public UnitTest
 
         BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);
         ~BeamformerCoeffTest();
+
+        /** \brief Overriden function to calculate GPU utilisation of steering coefficient generation
+         * 
+         *  \details    This function is overriden  as the steering coefficients are transferred to the GPU at a very slow rate.
+         *              This means that the simple compute_time/pcie_transfer time calculation wont produce anything useful.
+         *              This functiona also reports the GPU utilisation for an increasing number of MeerKAT pols. This is useful 
+         *              for mapping number of antennas to the number of GPUs. 
+         */ 
+        float get_time() override;
 
     protected:
         void simulate_input() override;
