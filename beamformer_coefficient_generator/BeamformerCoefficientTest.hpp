@@ -19,7 +19,8 @@ class BeamformerCoeffTest : public UnitTest
         enum SteeringCoefficientKernel
         {
             NAIVE,
-            MULTIPLE_CHANNELS
+            MULTIPLE_CHANNELS,
+            MULTIPLE_CHANNELS_AND_TIMESTAMPS
         };
 
         BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);

@@ -46,4 +46,9 @@ __global__ void calculate_beamweights_grouped_channels(
                                 struct delay_vals *psDelayVals, 
                                 float* pfCplxSteeringCoeffs);
 
+__global__ void calculate_beamweights_grouped_channels_and_timestamps(
+                                struct timespec sRefTime,
+                                struct delay_vals *psDelayVals, 
+                                float* pfCplxSteeringCoeffs);
+
 #endif

@@ -61,7 +61,7 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
     switch (m_eKernelOption)
     {
     //Refer to corresponding kernel functions for explanations as to how these blocks are generated
-    case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
+        case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
         {
             size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
             size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
@@ -79,7 +79,7 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
         }
         break;
 
-    case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS :
+        case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS :
         {
             int numSamplesPerChannel = NR_STATIONS*NR_BEAMS;
             int numBlocksPerChannel = numSamplesPerChannel/NUM_THREADS_PER_BLOCK;
@@ -100,9 +100,23 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
             m_cudaBlockSize = dim3(threadsPerBlock);
         }
         break;
-    }
 
-    
+        case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
+        {
+            size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
+            size_t ulNumBlocks = ulNumSamplesPerChannel/NUM_ANTBEAMS_PER_BLOCK;
+            if(ulNumSamplesPerChannel%NUM_ANTBEAMS_PER_BLOCK != 0){
+                ulNumBlocks++;
+            }
+            m_cudaGridSize = dim3(ulNumBlocks);//dim3(7,1);//
+            m_cudaBlockSize = dim3(NUM_THREADS_PER_BLOCK_MAX);
+            //std::cout << "Blocks: " << ulNumBlocks << std::endl;
+            //std::cout << "Ants: " << NR_STATIONS << std::endl;
+            //std::cout << "Beams: " << NR_BEAMS << std::endl;
+            //std::cout << "Ants x Beams: " << NR_STATIONS*NR_BEAMS << std::endl;
+        }
+        break;
+    }    
 }
 
 void BeamformerCoeffTest::simulate_input()
@@ -149,6 +163,12 @@ void BeamformerCoeffTest::run_kernel()
             long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
             sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
             calculate_beamweights_grouped_channels<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);
+        }
+        break;
+
+        case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
+        {
+            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs);
         }
         break;
     }
@@ -245,8 +265,11 @@ float BeamformerCoeffTest::get_time(){
         std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i+1) << std::endl;
         std::cout << std::endl;
     }
+
+    m_fGpuUtilisation_SingleTimeUnit*=4; //Multiply by four, to equal two antennas worth of data
+    m_fGpuUtilisation_MultipleTimeUnits*=4; //Multiply by four, to equal two antennas worth of data
     
-    UnitTest::get_time();
+    return UnitTest::get_time();
 }
 
 float BeamformerCoeffTest::get_gpu_utilisation_per_single_time_unit(){
