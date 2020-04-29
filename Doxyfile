@@ -130,6 +130,8 @@ INPUT                  =
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.cpp \
                          *.hpp \
+                         *.h \
+                         *.c \
                          *.cu \
                          *.cuh \
                          *.m \
