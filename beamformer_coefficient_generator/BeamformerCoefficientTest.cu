@@ -168,7 +168,10 @@ void BeamformerCoeffTest::run_kernel()
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
         {
-            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs);
+            //for (size_t i = 0; i < 10; i++)
+            //{
+                calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs,false);
+            //}
         }
         break;
     }

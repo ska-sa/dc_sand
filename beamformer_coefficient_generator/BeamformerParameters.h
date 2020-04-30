@@ -23,7 +23,7 @@
 #define NUM_CHANNELS_PER_KERNEL NR_CHANNELS
 
 //Used for the calculate_beamweights_grouped_channels_and_timestamps kernel
-#define NUM_ANTBEAMS_PER_BLOCK 16
+#define NUM_ANTBEAMS_PER_BLOCK 16 //Must be a power of 2
 #define NUM_THREADS_PER_BLOCK_MAX 1024
 
 /** \brief Delay values struct that stores the values transmitted from the SARAO CAM team.

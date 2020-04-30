@@ -2,6 +2,7 @@
 #include "BeamformerParameters.h"
 #include "cuComplex.h"
 #include <cstdint>
+#include "cuda_fp16.h"
 
 __global__ void calculate_beamweights_naive(
                                 struct timespec sCurrentTime, 
@@ -114,7 +115,8 @@ __global__ void calculate_beamweights_grouped_channels(
 __global__ void calculate_beamweights_grouped_channels_and_timestamps(
                                 struct timespec sRefTime,
                                 struct delay_vals *psDelayVals, 
-                                float* pfCplxSteeringCoeffs)
+                                float* pfCplxSteeringCoeffs,
+                                bool b16BitOutput)
 {
     //Calculate Relevant Indices
     int iBeamAntIndex = blockIdx.x*NUM_ANTBEAMS_PER_BLOCK + threadIdx.x % NUM_ANTBEAMS_PER_BLOCK;
@@ -125,17 +127,17 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     __shared__ struct delay_vals psSDelayVals[NUM_ANTBEAMS_PER_BLOCK];
     
     //Load delays into shared memory
-    if(threadIdx.x < NUM_ANTBEAMS_PER_BLOCK){
-        psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
-        //((int32_t *) psSDelayVals)[threadIdx.x] = ((int32_t *)psDelayVals)[iAntIndex*NR_BEAMS + iBeamIndex];
-    }
-
-    //if(iTimeChunk<4){
-        //psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
-    //    int iStartOffset =  blockIdx.x*NUM_ANTBEAMS_PER_BLOCK*4;
-        //printf("%d\n",iStartOffset);
-    //    ((int32_t *) psSDelayVals)[threadIdx.x] = ((int32_t *)psDelayVals)[(iStartOffset + threadIdx.x)];
+    //if(threadIdx.x < NUM_ANTBEAMS_PER_BLOCK){
+    //    psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
+    //    //((int32_t *) psSDelayVals)[threadIdx.x] = ((int32_t *)psDelayVals)[iAntIndex*NR_BEAMS + iBeamIndex];
     //}
+
+    //More efficient to load psDelayVals at bytes per thread instead of 16 bytes per thread, this is why the array is cast to int32_t
+    if(threadIdx.x<NUM_ANTBEAMS_PER_BLOCK*4){
+        //psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
+        int iStartOffset =  blockIdx.x*NUM_ANTBEAMS_PER_BLOCK*4;
+        ((int32_t *) psSDelayVals)[threadIdx.x] = ((int32_t *)psDelayVals)[(iStartOffset + threadIdx.x)];
+    }
 
     __syncthreads();
     //Calculate Steering Coefficients
@@ -143,19 +145,20 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
         struct delay_vals sDelayValuesLocal = psSDelayVals[threadIdx.x % NUM_ANTBEAMS_PER_BLOCK];
 
         //Calculate which channels to iterate through
-        int iChannelBlockIndex = 0;
-        int iChannelStartIndex = iChannelBlockIndex*NUM_CHANNELS_PER_KERNEL;
-        int iChannelStopIndex = (iChannelBlockIndex+1)*(NUM_CHANNELS_PER_KERNEL);
-        if(iChannelStartIndex > NR_CHANNELS){
-            iChannelStopIndex = NR_CHANNELS;
-        }
+        // int iChannelBlockIndex = 0;
+        // int iChannelStartIndex = iChannelBlockIndex*NUM_CHANNELS_PER_KERNEL;
+        // int iChannelStopIndex = (iChannelBlockIndex+1)*(NUM_CHANNELS_PER_KERNEL);
+        // if(iChannelStartIndex > NR_CHANNELS){
+        //     iChannelStopIndex = NR_CHANNELS;
+        // }
 
-            //Each block is divided into seperate discrete chunks. It may have made sense to have these as a y dimension instead. I may get to that later
-        const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/NUM_ANTBEAMS_PER_BLOCK;
+        //Each block is divided into seperate discrete chunks. It may have made sense to have these as a y dimension instead. I may get to that later
+        const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/(NUM_ANTBEAMS_PER_BLOCK*2);//This multiply by two is here to increase the width of a single time chunk. This will better coalesce the writing of data to the pfCplxSteeringCoeffs. After some tweaking, 2 works best for 32-bit floating point outputs and 1 for 16-bit floating point outputs. When this is changed, the multiply by two in iTimeChunk two lines down must also be changed 
         const int iTimeIterations = NR_SAMPLES_PER_CHANNEL/iTotalTimeChunksPerKernel;
+        int iTimeChunk = threadIdx.x / (NUM_ANTBEAMS_PER_BLOCK*2);
+        //#pragma unroll
         for (int iTimeStep = 0; iTimeStep < iTimeIterations; iTimeStep++)
         {
-            int iTimeChunk = threadIdx.x / NUM_ANTBEAMS_PER_BLOCK;
             int iTimeIndex = iTimeChunk + iTimeStep*iTotalTimeChunksPerKernel;
             float fTimeDifference = iTimeIndex*SAMPLING_PERIOD*FFT_SIZE; //Should work if this is negative as well?
             float fDeltaTime = fTimeDifference;
@@ -165,9 +168,10 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
 
             size_t ulOutputIndex;
             //Iterate through all required channels
-            for(int iChannelIndex = iChannelStartIndex; iChannelIndex < iChannelStopIndex; iChannelIndex++)
+            
+            #pragma unroll
+            for(int iChannelIndex = 0; iChannelIndex < NR_CHANNELS; iChannelIndex++)
             {
-
                 float fDelayN = (sDelayValuesLocal.fDelayRate_sps + fDeltaDelay)*iChannelIndex*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
                 float fPhase0 = sDelayValuesLocal.fPhase_rad - fDelayN2 + fDeltaPhase;
                 float fRotation = fDelayN + fPhase0;
@@ -175,13 +179,20 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
                 float fSteeringCoeffCorrectImag;// = __sinf(fRotation);
                 __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
 
-                ulOutputIndex = (NR_STATIONS*NR_CHANNELS*NR_BEAMS*iTimeIndex + iChannelIndex*NR_STATIONS*NR_BEAMS + iBeamAntIndex)*2;
-                //if(ulOutputIndex > 10485760-50){
-                //    //printf("Ya here yet?\n");
-                //    printf("%li B %d A %d T %d C %d\n",ulOutputIndex,iBeamIndex,iAntIndex,iTimeIndex,iChannelIndex);
+                //if(!b16BitOutput){
+                    //32 bit output
+                    ulOutputIndex = (NR_STATIONS*NR_CHANNELS*NR_BEAMS*iTimeIndex + iChannelIndex*NR_STATIONS*NR_BEAMS + iBeamAntIndex)*2;
+                    pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+                    pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
+                //}else{
+                //    ulOutputIndex = (NR_STATIONS*NR_CHANNELS*NR_BEAMS*iTimeIndex + iChannelIndex*NR_STATIONS*NR_BEAMS + iBeamAntIndex);
+                    //float2 f2Temp;
+                    //f2Temp.x = fSteeringCoeffCorrectReal;
+                    //f2Temp.y = fSteeringCoeffCorrectImag;
+                //    __half2 h2PackedOutput = __floats2half2_rn(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+                    //printf("Orig %f Converted %f %f\n",fSteeringCoeffCorrectReal,__high2float(h2PackedOutput), __low2float(h2PackedOutput));
+                //    ((__half2*)pfCplxSteeringCoeffs)[ulOutputIndex] = h2PackedOutput;
                 //}
-                pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
-                pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
             }
         }
     }
