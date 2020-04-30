@@ -120,20 +120,17 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     int iBeamAntIndex = blockIdx.x*NUM_ANTBEAMS_PER_BLOCK + threadIdx.x % NUM_ANTBEAMS_PER_BLOCK;
     int iAntIndex = iBeamAntIndex/NR_BEAMS;
     int iBeamIndex = iBeamAntIndex - iAntIndex * NR_BEAMS;
-    int iTimeIndex = threadIdx.x / NUM_ANTBEAMS_PER_BLOCK;
-
+    
     //Create shared memory arrays
     __shared__ struct delay_vals psSDelayVals[NUM_ANTBEAMS_PER_BLOCK];
-
-    float fTimeDifference = iTimeIndex*SAMPLING_PERIOD*FFT_SIZE; //Should work if this is negative as well?
     
     //Load delays into shared memory
-    if(iTimeIndex==0){
+    if(threadIdx.x < NUM_ANTBEAMS_PER_BLOCK){
         psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
         //((int32_t *) psSDelayVals)[threadIdx.x] = ((int32_t *)psDelayVals)[iAntIndex*NR_BEAMS + iBeamIndex];
     }
 
-    //if(iTimeIndex<4){
+    //if(iTimeChunk<4){
         //psSDelayVals[threadIdx.x] = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
     //    int iStartOffset =  blockIdx.x*NUM_ANTBEAMS_PER_BLOCK*4;
         //printf("%d\n",iStartOffset);
@@ -153,30 +150,39 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
             iChannelStopIndex = NR_CHANNELS;
         }
 
-        float fDeltaTime = fTimeDifference;
-        float fDeltaDelay = sDelayValuesLocal.fDelayRate_sps*fDeltaTime;
-        float fDeltaPhase = sDelayValuesLocal.fPhaseRate_radps*fDeltaTime;
-        float fDelayN2 = (sDelayValuesLocal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
-
-        size_t ulOutputIndex;
-        //Iterate through all required channels
-        for(int iChannelIndex = iChannelStartIndex; iChannelIndex < iChannelStopIndex; iChannelIndex++)
+            //Each block is divided into seperate discrete chunks. It may have made sense to have these as a y dimension instead. I may get to that later
+        const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/NUM_ANTBEAMS_PER_BLOCK;
+        const int iTimeIterations = NR_SAMPLES_PER_CHANNEL/iTotalTimeChunksPerKernel;
+        for (int iTimeStep = 0; iTimeStep < iTimeIterations; iTimeStep++)
         {
+            int iTimeChunk = threadIdx.x / NUM_ANTBEAMS_PER_BLOCK;
+            int iTimeIndex = iTimeChunk + iTimeStep*iTotalTimeChunksPerKernel;
+            float fTimeDifference = iTimeIndex*SAMPLING_PERIOD*FFT_SIZE; //Should work if this is negative as well?
+            float fDeltaTime = fTimeDifference;
+            float fDeltaDelay = sDelayValuesLocal.fDelayRate_sps*fDeltaTime;
+            float fDeltaPhase = sDelayValuesLocal.fPhaseRate_radps*fDeltaTime;
+            float fDelayN2 = (sDelayValuesLocal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
 
-            float fDelayN = (sDelayValuesLocal.fDelayRate_sps + fDeltaDelay)*iChannelIndex*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
-            float fPhase0 = sDelayValuesLocal.fPhase_rad - fDelayN2 + fDeltaPhase;
-            float fRotation = fDelayN + fPhase0;
-            float fSteeringCoeffCorrectReal;// = __cosf(fRotation);//At least i think its the real one - may need to check this if its important
-            float fSteeringCoeffCorrectImag;// = __sinf(fRotation);
-            __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
+            size_t ulOutputIndex;
+            //Iterate through all required channels
+            for(int iChannelIndex = iChannelStartIndex; iChannelIndex < iChannelStopIndex; iChannelIndex++)
+            {
 
-            ulOutputIndex = (NR_STATIONS*NR_CHANNELS*NR_BEAMS*iTimeIndex + iChannelIndex*NR_STATIONS*NR_BEAMS + iBeamAntIndex)*2;
-            //if(ulOutputIndex > 10485760-50){
-            //    //printf("Ya here yet?\n");
-            //    printf("%li B %d A %d T %d C %d\n",ulOutputIndex,iBeamIndex,iAntIndex,iTimeIndex,iChannelIndex);
-            //}
-            pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
-            pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
+                float fDelayN = (sDelayValuesLocal.fDelayRate_sps + fDeltaDelay)*iChannelIndex*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+                float fPhase0 = sDelayValuesLocal.fPhase_rad - fDelayN2 + fDeltaPhase;
+                float fRotation = fDelayN + fPhase0;
+                float fSteeringCoeffCorrectReal;// = __cosf(fRotation);//At least i think its the real one - may need to check this if its important
+                float fSteeringCoeffCorrectImag;// = __sinf(fRotation);
+                __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
+
+                ulOutputIndex = (NR_STATIONS*NR_CHANNELS*NR_BEAMS*iTimeIndex + iChannelIndex*NR_STATIONS*NR_BEAMS + iBeamAntIndex)*2;
+                //if(ulOutputIndex > 10485760-50){
+                //    //printf("Ya here yet?\n");
+                //    printf("%li B %d A %d T %d C %d\n",ulOutputIndex,iBeamIndex,iAntIndex,iTimeIndex,iChannelIndex);
+                //}
+                pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+                pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
+            }
         }
     }
     //Store steering coefficients into shared memory

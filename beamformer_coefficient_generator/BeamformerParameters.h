@@ -3,9 +3,9 @@
 
 #define NR_CHANNELS 64 //Number of frequency channels
 #define NR_POLARIZATIONS 1 // Just one for now, but I would eventually like to generalise it.
-#define NR_SAMPLES_PER_CHANNEL 64 //Number of time samples per channel
+#define NR_SAMPLES_PER_CHANNEL 256 //Number of time samples per channel. Must be a multiple of 64
 #define NR_STATIONS 64 //NUmber of antennas
-#define NR_BEAMS 10
+#define NR_BEAMS 16
 
 //Values used to calculate delays
 #define SAMPLING_PERIOD 1e-9f
@@ -20,7 +20,7 @@
 #define NUM_THREADS_PER_BLOCK 128
 
 //Used for the calculate_beamweights_grouped_channels kernel
-#define NUM_CHANNELS_PER_KERNEL 64
+#define NUM_CHANNELS_PER_KERNEL NR_CHANNELS
 
 //Used for the calculate_beamweights_grouped_channels_and_timestamps kernel
 #define NUM_ANTBEAMS_PER_BLOCK 16
