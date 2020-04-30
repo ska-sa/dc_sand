@@ -170,7 +170,7 @@ void BeamformerCoeffTest::run_kernel()
         {
             //for (size_t i = 0; i < 10; i++)
             //{
-                calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs,false);
+                calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pHDelayValues,m_pfDSteeringCoeffs,true);
             //}
         }
         break;
