@@ -26,6 +26,10 @@
 #define NUM_ANTBEAMS_PER_BLOCK 16 //Must be a power of 2
 #define NUM_THREADS_PER_BLOCK_MAX 1024
 
+//Used for calculate_beamweights_and_beamform_single_channel kernel
+#define INTERNAL_TIME_SAMPLES 16 //Due to Astron Tensor core correlation kernels having a weird split ordering
+//#define NUM_CHANNELS_PER_BLOCK 16
+
 /** \brief Delay values struct that stores the values transmitted from the SARAO CAM team.
  * 
  *  \details Delay values struct that stores the values transmitted from the SARAO CAM team.

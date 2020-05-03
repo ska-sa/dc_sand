@@ -188,3 +188,48 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     }
     //Store steering coefficients into shared memory
 }
+
+__global__ void calculate_beamweights_and_beamform_single_channel(
+                                struct timespec sRefTime,
+                                struct delay_vals *psDelayVals, 
+                                float* pfBeams,
+                                int8_t * pi8AntennaData)
+{
+    int iChannelOffset = blockIdx.x*NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2;
+    int iOffsetBetweenLoopIterations = 1024;
+    int iLoopIterations = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2/iOffsetBetweenLoopIterations;
+    int iThreadIndex = threadIdx.x;
+
+    __shared__ float pfTempStoreIn[NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2];
+    __shared__ float pfTempStoreOut[NR_BEAMS*NR_SAMPLES_PER_CHANNEL];
+
+    #pragma unroll
+    for (size_t i = 0; i < iLoopIterations; i++)
+    {
+        int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations+iChannelOffset;
+        int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations;
+        //if(blockIdx.x == 0 && i ==0){
+        //    printf("Thread: %d, Index: %d\n",threadIdx.x,iMemoryIndex);
+        //}
+        pfTempStoreIn[iSharedMemoryIndex] = ((float*)pi8AntennaData)[iGlobalMemoryIndex];
+        pfTempStoreOut[(iSharedMemoryIndex)%(NR_BEAMS*NR_SAMPLES_PER_CHANNEL)] = i;
+        
+    }
+
+    //if(iThreadIndex < 64){
+    //    for (size_t i = 0; i < 128; i++){
+    //
+    //    }
+    //}
+
+    //#pragma unroll
+    //for (size_t i = 0; i < iLoopIterations; i++)
+    //{
+    //    int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations+iChannelOffset;
+    //    int iSharedMemoryIndex = (threadIdx.x+i*iOffsetBetweenLoopIterations)%(NR_BEAMS*NR_SAMPLES_PER_CHANNEL);
+    //    pfBeams[iGlobalMemoryIndex] = pfTempStoreOut[iSharedMemoryIndex];
+    //}
+    
+    
+    
+}

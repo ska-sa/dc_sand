@@ -20,7 +20,8 @@ class BeamformerCoeffTest : public UnitTest
         {
             NAIVE,
             MULTIPLE_CHANNELS,
-            MULTIPLE_CHANNELS_AND_TIMESTAMPS
+            MULTIPLE_CHANNELS_AND_TIMESTAMPS,
+            COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL
         };
 
         BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);
@@ -54,21 +55,32 @@ class BeamformerCoeffTest : public UnitTest
         //Level of tolerance to use when checking beamformer values equal correct values
         float m_fFloatingPointTolerance;
 
-        //Host pointers
+        //Host pointers Delay Values Generation
         delay_vals *m_pHDelayValues;
         float *m_pfHSteeringCoeffs;
 
-        //device pointers
+        //Device pointers Delay Value Generation
         delay_vals *m_pDDelayValues;
         float *m_pfDSteeringCoeffs;
+
+        //Host pointers beamformer
+        int8_t *m_pi8HInputAntennaData;
+        float *m_pfHOutputBeams;
+
+        //Device pointers delay value generation
+        int8_t *m_pi8DInputAntennaData;
+        float *m_pfDOutputBeams;
 
         //Kernel Dimenstions
         dim3 m_cudaGridSize;
         dim3 m_cudaBlockSize;
 
-        //Sizes of data to transfers
+        //Sizes of data to transfer
         size_t m_ulSizeSteeringCoefficients;
         size_t m_ulSizeDelayValues;
+        size_t m_ulSizeInputAntennaData;
+        size_t m_ulSizeOutputBeamData;
+
 
         //Delay rate specific values
         struct timespec m_sReferenceTime_ns;

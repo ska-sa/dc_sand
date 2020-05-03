@@ -52,4 +52,10 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
                                 float* pfCplxSteeringCoeffs,
                                 bool b16BitOutput);
 
+__global__ void calculate_beamweights_and_beamform_single_channel(
+                                struct timespec sRefTime,
+                                struct delay_vals *psDelayVals, 
+                                float* pfBeams,
+                                int8_t * pi8AntennaData);
+
 #endif
