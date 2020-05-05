@@ -189,47 +189,145 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     //Store steering coefficients into shared memory
 }
 
+//TODO Iterate over a number of channels to reduce the shared memory usage
 __global__ void calculate_beamweights_and_beamform_single_channel(
                                 struct timespec sRefTime,
                                 struct delay_vals *psDelayVals, 
                                 float* pfBeams,
                                 int8_t * pi8AntennaData)
 {
-    int iChannelOffset = blockIdx.x*NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2;
-    int iOffsetBetweenLoopIterations = 1024;
-    int iLoopIterations = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2/iOffsetBetweenLoopIterations;
+    __shared__ delay_vals psDelayValsShared[NR_STATIONS*NR_BEAMS];
+    
     int iThreadIndex = threadIdx.x;
+    int iChannelIndex = blockIdx.x;
 
-    __shared__ float pfTempStoreIn[NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2];
-    __shared__ float pfTempStoreOut[NR_BEAMS*NR_SAMPLES_PER_CHANNEL];
-
+    //***** Load delay values into memory *****
+    const int iNumDelayValueTransfersTotal_32bitWords = NR_BEAMS*NR_STATIONS*sizeof(struct delay_vals)/sizeof(int32_t);
+    const int iNumDelayValueTransfersPerThread = iNumDelayValueTransfersTotal_32bitWords/NUM_THREADS_PER_BLOCK_MAX;
+    const int iOffsetBetweenDelayValueLoopIterations_32bitWords = NUM_THREADS_PER_BLOCK_MAX;
     #pragma unroll
-    for (size_t i = 0; i < iLoopIterations; i++)
+    for (size_t i = 0; i < iNumDelayValueTransfersPerThread; i++)
     {
-        int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations+iChannelOffset;
-        int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations;
-        //if(blockIdx.x == 0 && i ==0){
-        //    printf("Thread: %d, Index: %d\n",threadIdx.x,iMemoryIndex);
-        //}
-        pfTempStoreIn[iSharedMemoryIndex] = ((float*)pi8AntennaData)[iGlobalMemoryIndex];
-        pfTempStoreOut[(iSharedMemoryIndex)%(NR_BEAMS*NR_SAMPLES_PER_CHANNEL)] = i;
-        
+        int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenDelayValueLoopIterations_32bitWords;
+        int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenDelayValueLoopIterations_32bitWords;
+        ((int32_t*)psDelayValsShared)[iSharedMemoryIndex] = ((int32_t*)psDelayValsShared)[iGlobalMemoryIndex];
     }
 
-    //if(iThreadIndex < 64){
-    //    for (size_t i = 0; i < 128; i++){
-    //
-    //    }
-    //}
+    __syncthreads();
 
-    //#pragma unroll
-    //for (size_t i = 0; i < iLoopIterations; i++)
-    //{
-    //    int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations+iChannelOffset;
-    //    int iSharedMemoryIndex = (threadIdx.x+i*iOffsetBetweenLoopIterations)%(NR_BEAMS*NR_SAMPLES_PER_CHANNEL);
-    //    pfBeams[iGlobalMemoryIndex] = pfTempStoreOut[iSharedMemoryIndex];
-    //}
+    // //***** Load Input antenna data into memory *****
+    // const int iNumTransfersTotal_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*2*sizeof(int8_t)/sizeof(int32_t);
+    // const int iNumTransfersPerThread = iNumTransfersTotal_32bitWords/NUM_THREADS_PER_BLOCK_MAX;
+    // const int iOffsetBetweenLoopIterations_32bitWords = NUM_THREADS_PER_BLOCK_MAX;
+
+    // #pragma unroll
+    // for (size_t i = 0; i < iNumTransfersPerThread; i++)
+    // {
+    //     int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords+iChannelOffset_32bitWords;
+    //     int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords;
+    //     ((int32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((int32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+    // }
+
+    //***** Beamform the data *****
+
+    //Each sequential set of 64 threads calculates a single beam. All 1024 threads are used this way - needs to be modified for changing number of antennas
+    //Can eventually take advantage of warp level operations
+
+    __shared__ float pfBeamReductionStore[NUM_THREADS_PER_BLOCK_MAX*2];
+    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS*INTERNAL_TIME_SAMPLES*2];
+    struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
+
+    const int iNumTransfers_32BitWords = INTERNAL_TIME_SAMPLES*NR_STATIONS*2*sizeof(int8_t)/sizeof(int32_t);
+    int iChannelOffset_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*2*sizeof(int8_t)/sizeof(int32_t)*blockIdx.x;
     
+    //***** Perform Beamforming *****
+    #pragma unroll
+    for (size_t j = 0; j < NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES; j++)
+    {
+        int iTimeOffset_32bitWords = iNumTransfers_32BitWords*j;
+        //***** Copy antenna data into shared memory *****
+        if(iThreadIndex < iNumTransfers_32BitWords){
+            int iGlobalMemoryIndex = iThreadIndex + iTimeOffset_32bitWords + iChannelOffset_32bitWords;
+            int iSharedMemoryIndex = threadIdx.x;
+            ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+            ((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex];
+            //if(j == 0 && iChannelIndex == 0){
+            //    printf("ThreadID: %d, GlobMemIndex: %d, Input: %d, Output: %d\n",iThreadIndex,iGlobalMemoryIndex,((uint32_t*)pi8AntennaData)[iThreadIndex + iTimeOffset_32bitWords + iChannelOffset_32bitWords],((uint32_t *)pfBeams)[iThreadIndex + iTimeOffset_32bitWords + iChannelOffset_32bitWords]);
+            //}
+        }
+        __syncthreads();
+
+        #pragma unroll
+        for (int i = 0; i < INTERNAL_TIME_SAMPLES; i++)
+        {
+            //***** Calculate Steering Coefficients *****
+            int iTimeIndex = i + j * INTERNAL_TIME_SAMPLES;
+            float fTimeDifference = iTimeIndex*SAMPLING_PERIOD*FFT_SIZE; //Should work if this is negative as well?
+            float fDeltaTime = fTimeDifference;
+            float fDeltaDelay = sDelayValuesLocal.fDelayRate_sps*fDeltaTime;
+            float fDeltaPhase = sDelayValuesLocal.fPhaseRate_radps*fDeltaTime;
+            float fDelayN2 = (sDelayValuesLocal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+            float fDelayN = (sDelayValuesLocal.fDelayRate_sps + fDeltaDelay)*iChannelIndex*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+            float fPhase0 = sDelayValuesLocal.fPhase_rad - fDelayN2 + fDeltaPhase;
+            float fRotation = fDelayN + fPhase0;
+            float fSteeringCoeffCorrectReal;// = __cosf(fRotation);//At least i think its the real one - may need to check this if its important
+            float fSteeringCoeffCorrectImag;// = __sinf(fRotation);
+            __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
+
+            //***** Get Antenna Sample Values *****
+            int iBeamIndex = iThreadIndex/NR_STATIONS;
+            int iAntIndex = iThreadIndex - iBeamIndex * NR_STATIONS;
+            int iSampleIndex = iAntIndex*INTERNAL_TIME_SAMPLES + i;
+            //if(iChannelIndex == 0){
+            //    printf("%d %d\n",iThreadIndex,iSampleIndex);
+            //}
+            int8_t i8AntValueReal = pi8AntennaDataInShared[iSampleIndex*2];
+            int8_t i8AntValueImag = pi8AntennaDataInShared[iSampleIndex*2+1];
+
+            pfBeamReductionStore[iThreadIndex*2] = fSteeringCoeffCorrectReal * i8AntValueReal;
+            pfBeamReductionStore[iThreadIndex*2+1] = fSteeringCoeffCorrectImag * i8AntValueImag;
+            __syncthreads();
+            //***** Sum Coefficient Values Together - Adds real to real - basic reduce algorithm, to be replaced with cuda warp level primitives at a later date ****
+            //The shared memory writes  pfBeamReductionStore[iRealIndexOut] = iTempOutReal are expensive, I will try implement this with warp level primitives 
+            
+            // #pragma unroll
+            // for (int iStep = 2; iStep <= 64; iStep=iStep<<1)
+            // {
+            //     int iNumThreads = 64/iStep;
+            //     int iRealIndex0In = 4*iAntIndex + 0 + iBeamIndex*NR_STATIONS*2;
+            //     int iImagIndex0In = 4*iAntIndex + 1 + iBeamIndex*NR_STATIONS*2;
+            //     int iRealIndex1In = 4*iAntIndex + 2 + iBeamIndex*NR_STATIONS*2;
+            //     int iImagIndex1In = 4*iAntIndex + 3 + iBeamIndex*NR_STATIONS*2;
+            //     int iRealIndexOut = 2*iAntIndex + 0 + iBeamIndex*NR_STATIONS*2;
+            //     int iImagIndexOut = 2*iAntIndex + 1 + iBeamIndex*NR_STATIONS*2;
+            //     //if(i == 0 && iChannelIndex == 0 && iThreadIndex == 0 && j==0 && pfBeamReductionStore[iAntIndex] != 0){
+            //     //    printf("%d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndex0,iRealIndex1,iImagIndex0,iImagIndex1);
+            //     //}
+            //     if(iAntIndex < iNumThreads){
+            //         // if(i == 0 && iChannelIndex == 0 && iThreadIndex < 64 && j==0 && pfBeamReductionStore[iAntIndex] != 0){
+            //         //     printf("%d %d %d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndexOut,iImagIndexOut,iRealIndex0In,iRealIndex1In,iImagIndex0In,iImagIndex1In);
+            //         //     printf("%d %d %f %f %f %f\n",iThreadIndex,iStep,pfBeamReductionStore[iRealIndex0In],pfBeamReductionStore[iRealIndex1In],pfBeamReductionStore[iImagIndex0In],pfBeamReductionStore[iImagIndex1In]);
+            //         // }
+            //         int iTempOutReal = pfBeamReductionStore[iRealIndex0In] + pfBeamReductionStore[iRealIndex1In];
+            //         int iTempOutImag = pfBeamReductionStore[iImagIndex0In] + pfBeamReductionStore[iImagIndex0In];
+            //         __syncthreads();
+            //         pfBeamReductionStore[iRealIndexOut] = iTempOutReal;
+            //         pfBeamReductionStore[iImagIndexOut] = iTempOutImag;
+            //     }
+            //     __syncthreads();
+            // }
+        }
+    }
     
-    
+    // __syncthreads();
+
+    //***** Load output beam data into memory *****
+    // #pragma unroll
+    // for (size_t i = 0; i < iNumTransfersPerThread; i++)
+    // {
+    //     int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords+iChannelOffset_32bitWords;
+    //     int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords;
+    //     ((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((float*)pi8AntennaDataInShared)[iSharedMemoryIndex];// * ((float*)psDelayValsShared)[iSharedMemoryIndex%(iNumDelayValueTransfersTotal_32bitWords)];
+    // }
+
 }
