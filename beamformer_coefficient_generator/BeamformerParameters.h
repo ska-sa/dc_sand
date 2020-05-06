@@ -8,7 +8,7 @@
 #define NR_BEAMS 16
 
 //Values used to calculate delays
-#define SAMPLING_PERIOD 1e-9f
+#define SAMPLING_PERIOD 1e-7f
 #define FFT_SIZE 8192
 #define ADC_SAMPLE_RATE 1712e6
 #define ACCUMULATIONS_BEFORE_NEW_COEFFS 256

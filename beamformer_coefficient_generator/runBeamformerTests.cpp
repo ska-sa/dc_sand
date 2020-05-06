@@ -26,7 +26,7 @@ int main()
     // {
     //     std::cout << "Testing with a single thread generating multiple steering coefficients(equal to the number of channels) per antenna-beam delay value." << std::endl;
     //     std::cout << "A single kernel generates multiple timestamps for a limited subset of delay values" << std::endl;
-    //     BeamformerCoeffTest oBeamformerCoeffTest(1e-6f, BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS);
+    //     BeamformerCoeffTest oBeamformerCoeffTest(1e-4f, BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS);
     //     oBeamformerCoeffTest.run_test();
     //     oBeamformerCoeffTest.get_time();
     //     int iResult = oBeamformerCoeffTest.get_result();

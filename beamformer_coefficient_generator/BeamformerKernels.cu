@@ -143,7 +143,7 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     //Calculate Steering Coefficients
     if(iBeamAntIndex < NR_BEAMS*NR_STATIONS){
         struct delay_vals sDelayValuesLocal = psSDelayVals[threadIdx.x % NUM_ANTBEAMS_PER_BLOCK];
-
+        //printf("%f %f %f %f\n",sDelayValuesLocal.fDelay_s,sDelayValuesLocal.fDelayRate_sps,sDelayValuesLocal.fPhase_rad,sDelayValuesLocal.fPhaseRate_radps);
         //Each block is divided into seperate discrete chunks. It may have made sense to have these as a y dimension instead. I may get to that later
         const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/(NUM_ANTBEAMS_PER_BLOCK*2);//This multiply by two is here to increase the width of a single time chunk. This will better coalesce the writing of data to the pfCplxSteeringCoeffs. After some tweaking, 2 works best for 32-bit floating point outputs and 1 for 16-bit floating point outputs. When this is changed, the multiply by two in iTimeChunk two lines down must also be changed 
         const int iTimeIterations = NR_SAMPLES_PER_CHANNEL/iTotalTimeChunksPerKernel;
@@ -210,7 +210,8 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     {
         int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenDelayValueLoopIterations_32bitWords;
         int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenDelayValueLoopIterations_32bitWords;
-        ((int32_t*)psDelayValsShared)[iSharedMemoryIndex] = ((int32_t*)psDelayValsShared)[iGlobalMemoryIndex];
+        ((int32_t*)psDelayValsShared)[iSharedMemoryIndex] = ((int32_t*)psDelayVals)[iGlobalMemoryIndex];
+        //printf("%f\n",((float*)psDelayValsShared)[iGlobalMemoryIndex]);
     }
 
     __syncthreads();
@@ -223,6 +224,10 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS*INTERNAL_TIME_SAMPLES*2];
     __shared__ float pfBeamDataOutShared[NR_BEAMS*INTERNAL_TIME_SAMPLES*2];
     struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
+
+    // if(iThreadIndex == 0 && iChannelIndex == 0){
+    //     printf("%f %f %f %f\n",psDelayValsShared[threadIdx.x].fDelay_s,sDelayValuesLocal.fDelayRate_sps,sDelayValuesLocal.fPhase_rad,sDelayValuesLocal.fPhaseRate_radps);
+    // }
 
     const int iNumTransfersIn_32BitWords = INTERNAL_TIME_SAMPLES*NR_STATIONS*2*sizeof(int8_t)/sizeof(int32_t);
     const int iNumTransfersOut_32BitWords = INTERNAL_TIME_SAMPLES*NR_BEAMS*2*sizeof(float)/sizeof(int32_t);
@@ -342,14 +347,5 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     }
     
     __syncthreads();
-
-    //***** Load output beam data into memory *****
-    // #pragma unroll
-    // for (size_t i = 0; i < iNumTransfersPerThread; i++)
-    // {
-    //     int iGlobalMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords+iChannelOffset_32bitWords;
-    //     int iSharedMemoryIndex = threadIdx.x+i*iOffsetBetweenLoopIterations_32bitWords;
-    //     ((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((float*)pi8AntennaDataInShared)[iSharedMemoryIndex];// * ((float*)psDelayValsShared)[iSharedMemoryIndex%(iNumDelayValueTransfersTotal_32bitWords)];
-    // }
-
+    
 }
