@@ -1,7 +1,7 @@
 #ifndef __BEAMFORMER_PARAMETERS_H__
 #define __BEAMFORMER_PARAMETERS_H__
 
-#define NR_CHANNELS 640 //Number of frequency channels
+#define NR_CHANNELS 64 //Number of frequency channels
 #define NR_POLARIZATIONS 1 // Just one for now, but I would eventually like to generalise it.
 #define NR_SAMPLES_PER_CHANNEL 256 //Number of time samples per channel. Must be a multiple of 64
 #define NR_STATIONS 64 //NUmber of antennas
