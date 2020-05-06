@@ -302,11 +302,12 @@ void BeamformerCoeffTest::verify_output()
         {
             int8_t * pi8InData = m_pi8HInputAntennaData;
             int8_t * pi8OutData = (int8_t*)m_pfHOutputBeams;
+            std::cout << "*****" << static_cast<double>(m_pfHOutputBeams[0]) << "******" << std::endl;
             for (size_t i = 0; i < m_ulSizeInputAntennaData; i++)
             {
                 if (pi8InData[i] != pi8OutData[i])
                 {
-                    std::cout << i << " " << static_cast<int32_t>(pi8InData[i]) << " " << static_cast<int32_t>(pi8OutData[i]) <<  std::endl;
+                    std::cout << i << " " << static_cast<int32_t>(pi8InData[i]) << " " << m_pfHOutputBeams[i] <<  std::endl;
                     //m_iResult = -1;
                     return;
                 }

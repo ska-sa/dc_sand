@@ -281,8 +281,8 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
 
             //***** Multiply Antenna Sample by steering coefficient *****
-            pfBeamReductionStore[iThreadIndex*2] = 1;//fSteeringCoeffCorrectReal * i8AntValueReal;//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
-            pfBeamReductionStore[iThreadIndex*2+1] = 2;//fSteeringCoeffCorrectImag * i8AntValueImag;//Performance bottleneck
+            pfBeamReductionStore[iThreadIndex*2] = fSteeringCoeffCorrectReal * i8AntValueReal;//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
+            pfBeamReductionStore[iThreadIndex*2+1] = fSteeringCoeffCorrectImag * i8AntValueImag;//Performance bottleneck
 
             __syncthreads();
             //***** Sum Coefficient Values Together - Adds real to real - basic reduce algorithm, to be replaced with cuda warp level primitives at a later date ****
@@ -326,17 +326,17 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
                 //}
             }
         }
-        __syncthreads();//This is here as the writing back to global memory does not necessarily follow the same thread indexing convention as generating the steering coeffs
+        __syncthreads();//This is here as the writing back to global memory does not necessarily follow the same thread indexing convention as generating the steering coeffs - dont hate me
         
         //***** Writing shared memory struct out to global memory *****
         int iTimeOffsetOut_32bitWords = iNumTransfersOut_32BitWords*j;
         if(iThreadIndex < iNumTransfersOut_32BitWords){
             int iGlobalMemoryIndex = iThreadIndex + iTimeOffsetOut_32bitWords + iChannelOffsetOut_32bitWords;
             int iSharedMemoryIndex = threadIdx.x;
-            ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
-            //((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex];
+            //((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+            ((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((uint32_t*)pfBeamDataOutShared)[iSharedMemoryIndex];
             //if(j == 0 && iChannelIndex == 0){
-            //    printf("ThreadID: %d, GlobMemIndex: %d, Input: %d, Output: %d\n",iThreadIndex,iGlobalMemoryIndex,((uint32_t*)pi8AntennaData)[iThreadIndex + iTimeOffset_32bitWords + iChannelOffset_32bitWords],((uint32_t *)pfBeams)[iThreadIndex + iTimeOffset_32bitWords + iChannelOffset_32bitWords]);
+            //    printf("ThreadID: %d, GlobMemIndex: %d, Input: %f, Output: %f\n",iThreadIndex,iGlobalMemoryIndex,pfBeamDataOutShared[iSharedMemoryIndex],pfBeams[iGlobalMemoryIndex]);
             //}
         }
     }
