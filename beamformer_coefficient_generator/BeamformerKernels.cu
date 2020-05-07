@@ -327,7 +327,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
                 }
 
                 if(iNumThreads<=32){
-                    __syncthreads(); //Syncwarp is way faster than syncthreads but only works on warps. Seriously though, its waaaaaaaay faster
+                    __syncwarp(); //Syncwarp is way faster than syncthreads but only works on warps. Seriously though, its waaaaaaaay faster
                 }else{
                     __syncthreads();
                 }
