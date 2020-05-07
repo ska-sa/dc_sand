@@ -220,19 +220,19 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     //Each sequential set of 64 threads calculates a single beam. All 1024 threads are used this way - needs to be modified for changing number of antennas
     //Can eventually take advantage of warp level operations
 
-    __shared__ float pfBeamReductionStore[NUM_THREADS_PER_BLOCK_MAX*2];
-    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS*INTERNAL_TIME_SAMPLES*2];
-    __shared__ float pfBeamDataOutShared[NR_BEAMS*INTERNAL_TIME_SAMPLES*2];
+    __shared__ float pfBeamReductionStore[NUM_THREADS_PER_BLOCK_MAX*COMPLEXITY];
+    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS*INTERNAL_TIME_SAMPLES*COMPLEXITY];
+    __shared__ float pfBeamDataOutShared[NR_BEAMS*INTERNAL_TIME_SAMPLES*COMPLEXITY];
     struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
 
     // if(iThreadIndex == 0 && iChannelIndex == 0){
     //     printf("%f %f %f %f\n",psDelayValsShared[threadIdx.x].fDelay_s,sDelayValuesLocal.fDelayRate_sps,sDelayValuesLocal.fPhase_rad,sDelayValuesLocal.fPhaseRate_radps);
     // }
 
-    const int iNumTransfersIn_32BitWords = INTERNAL_TIME_SAMPLES*NR_STATIONS*2*sizeof(int8_t)/sizeof(int32_t);
-    const int iNumTransfersOut_32BitWords = INTERNAL_TIME_SAMPLES*NR_BEAMS*2*sizeof(float)/sizeof(int32_t);
-    int iChannelOffsetIn_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*2*sizeof(int8_t)/sizeof(int32_t)*blockIdx.x;
-    int iChannelOffsetOut_32bitWords = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*2*sizeof(float)/sizeof(int32_t)*blockIdx.x;
+    const int iNumTransfersIn_32BitWords = INTERNAL_TIME_SAMPLES*NR_STATIONS*COMPLEXITY*sizeof(int8_t)/sizeof(int32_t);
+    const int iNumTransfersOut_32BitWords = INTERNAL_TIME_SAMPLES*NR_BEAMS*COMPLEXITY*sizeof(float)/sizeof(int32_t);
+    int iChannelOffsetIn_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)/sizeof(int32_t)*blockIdx.x;
+    int iChannelOffsetOut_32bitWords = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)/sizeof(int32_t)*blockIdx.x;
     
     //***** Perform Beamforming *****
     #pragma unroll
@@ -256,20 +256,20 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
         int iAntIndex = iThreadIndex - iBeamIndex * NR_STATIONS;
 
         //These 8 indeces are for the reduction operation, but they are declared here as they dont need to be part of the for loop
-        int iRealIndex0In = 4*iAntIndex + 0 + iBeamIndex*NR_STATIONS*2;
-        int iImagIndex0In = 4*iAntIndex + 1 + iBeamIndex*NR_STATIONS*2;
-        int iRealIndex1In = 4*iAntIndex + 2 + iBeamIndex*NR_STATIONS*2;
-        int iImagIndex1In = 4*iAntIndex + 3 + iBeamIndex*NR_STATIONS*2;
-        int iRealIndexOut = 2*iAntIndex + 0 + iBeamIndex*NR_STATIONS*2;
-        int iImagIndexOut = 2*iAntIndex + 1 + iBeamIndex*NR_STATIONS*2;
+        int iRealIndex0In = 4*iAntIndex + 0 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iImagIndex0In = 4*iAntIndex + 1 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iRealIndex1In = 4*iAntIndex + 2 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iImagIndex1In = 4*iAntIndex + 3 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iRealIndexOut = 2*iAntIndex + 0 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iImagIndexOut = 2*iAntIndex + 1 + iBeamIndex*NR_STATIONS*COMPLEXITY;
 
         #pragma unroll
         for (int i = 0; i < INTERNAL_TIME_SAMPLES; i++)
         {
             //***** Get Antenna Sample Values *****
-            int iSampleIndex = iAntIndex*INTERNAL_TIME_SAMPLES + i;
-            int8_t i8AntValueReal = pi8AntennaDataInShared[iSampleIndex*2];//Performance bottleneck 
-            int8_t i8AntValueImag = pi8AntennaDataInShared[iSampleIndex*2+1];//Performance bottleneck
+            int iSampleIndex = COMPLEXITY*(iAntIndex*INTERNAL_TIME_SAMPLES + i);
+            int8_t i8AntValueReal = pi8AntennaDataInShared[iSampleIndex];//Performance bottleneck 
+            int8_t i8AntValueImag = pi8AntennaDataInShared[iSampleIndex+1];//Performance bottleneck
             
             //***** Calculate Steering Coefficients *****
             int iTimeIndex = i + j * INTERNAL_TIME_SAMPLES;
@@ -277,7 +277,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             float fDeltaTime = fTimeDifference;
             float fDeltaDelay = sDelayValuesLocal.fDelayRate_sps*fDeltaTime;
             float fDeltaPhase = sDelayValuesLocal.fPhaseRate_radps*fDeltaTime;
-            float fDelayN2 = (sDelayValuesLocal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+            float fDelayN2 = (sDelayValuesLocal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2.0f)*((float)M_PI)/(SAMPLING_PERIOD*((float)NR_CHANNELS));
             float fDelayN = (sDelayValuesLocal.fDelayRate_sps + fDeltaDelay)*iChannelIndex*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
             float fPhase0 = sDelayValuesLocal.fPhase_rad - fDelayN2 + fDeltaPhase;
             float fRotation = fDelayN + fPhase0;
@@ -286,8 +286,15 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
 
             //***** Multiply Antenna Sample by steering coefficient *****
-            pfBeamReductionStore[iThreadIndex*2] = fSteeringCoeffCorrectReal * i8AntValueReal;//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
-            pfBeamReductionStore[iThreadIndex*2+1] = fSteeringCoeffCorrectImag * i8AntValueImag;//Performance bottleneck
+            pfBeamReductionStore[iThreadIndex*COMPLEXITY] = fSteeringCoeffCorrectReal * ((float)i8AntValueReal);//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
+            pfBeamReductionStore[iThreadIndex*COMPLEXITY+1] = fSteeringCoeffCorrectImag * ((float)i8AntValueImag);//Performance bottleneck
+
+            // if(iChannelIndex == 0 && iThreadIndex < 16 && j == 1 && i==0){
+            //     __syncthreads();
+            //     printf("%f Ant: %d CoeffIndex: %d Real: %f Imag: %f, Ant Val real: %d, Ant Val Imag: %d\n\t Delay Vals: %f %f %f %f\n\tSample*BW Real %f Imag %f\n",fRotation ,iAntIndex, iThreadIndex, fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag,(int32_t)i8AntValueReal,(int32_t)i8AntValueImag,sDelayValuesLocal.fDelay_s*1000000,sDelayValuesLocal.fDelayRate_sps*1000000,sDelayValuesLocal.fPhase_rad*1000000,sDelayValuesLocal.fPhaseRate_radps*1000000,pfBeamReductionStore[iThreadIndex*COMPLEXITY],pfBeamReductionStore[iThreadIndex*COMPLEXITY+1]);
+            //      //printf("%d %f %f %f %f\nSteering Coeffs. Ant: %d Real %f Imag %f\n",threadIdx.x,sDelayValuesLocal.fDelay_s*1000000,sDelayValuesLocal.fDelayRate_sps*1000000,sDelayValuesLocal.fPhase_rad*1000000,sDelayValuesLocal.fPhaseRate_radps*1000000,iThreadIndex,fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+            // }
+
 
             __syncthreads();
             //***** Sum Coefficient Values Together - Adds real to real - basic reduce algorithm, to be replaced with cuda warp level primitives at a later date ****
@@ -303,36 +310,52 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
                 //    printf("%d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndex0,iRealIndex1,iImagIndex0,iImagIndex1);
                 //}
                 if(iAntIndex < iNumThreads){
-                    //if(i == 0 && iChannelIndex == 0 && iThreadIndex < 64 && j==0 && pfBeamReductionStore[iAntIndex] != 0){
-                    //    printf("%d %d %d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndexOut,iImagIndexOut,iRealIndex0In,iRealIndex1In,iImagIndex0In,iImagIndex1In);
-                    //    printf("%d %d %f %f %f %f\n",iThreadIndex,iStep,pfBeamReductionStore[iRealIndex0In],pfBeamReductionStore[iRealIndex1In],pfBeamReductionStore[iImagIndex0In],pfBeamReductionStore[iImagIndex1In]);
-                    //}
-                    int iTempOutReal = pfBeamReductionStore[iRealIndex0In] + pfBeamReductionStore[iRealIndex1In];
-                    int iTempOutImag = pfBeamReductionStore[iImagIndex0In] + pfBeamReductionStore[iImagIndex0In];
+                    float iTempOutReal = pfBeamReductionStore[iRealIndex0In] + pfBeamReductionStore[iRealIndex1In];
+                    float iTempOutImag = pfBeamReductionStore[iImagIndex0In] + pfBeamReductionStore[iImagIndex1In];
+                    // if(i == 0 && iChannelIndex == 0 && iThreadIndex < 64 && j==0){
+                    //     __syncthreads();
+                    //     //if(iThreadIndex==0){
+                    //     //    printf("==============================================");
+                    //     //}
+                    //     //printf("%d %d %d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndexOut,iImagIndexOut,iRealIndex0In,iRealIndex1In,iImagIndex0In,iImagIndex1In);
+                    //     printf("Reduction %d %d %f %f %f %f \n\t %d %d %d %d %f %f\n",iThreadIndex,iStep,pfBeamReductionStore[iRealIndex0In],pfBeamReductionStore[iRealIndex1In],pfBeamReductionStore[iImagIndex0In],pfBeamReductionStore[iImagIndex1In],iRealIndex0In,iRealIndex1In,iRealIndexOut, iImagIndexOut, iTempOutReal,iTempOutImag);
+                    // }
+
                     __syncwarp();
-                    pfBeamReductionStore[iRealIndexOut] = iTempOutReal;
+                    pfBeamReductionStore[iRealIndexOut] = iTempOutReal;//So this writing to shared memory is a bit of a bottleneck. For iNumThreads<=32 I think that using __shfl_down_sync is going to help, significantly, as in you would be stupid not to do this. Refer to this: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-description
                     pfBeamReductionStore[iImagIndexOut] = iTempOutImag;
                 }
+
                 if(iNumThreads<=32){
-                    __syncwarp(); //Syncwarp is way faster than syncthreads but only works on warps. Seriously though, its waaaaaaaay faster
+                    __syncthreads(); //Syncwarp is way faster than syncthreads but only works on warps. Seriously though, its waaaaaaaay faster
                 }else{
                     __syncthreads();
                 }
+                
+                // if(i == 0 && iChannelIndex == 0 && iThreadIndex == 0 && j==0 && pfBeamReductionStore[iAntIndex] != 0){
+                //     printf("\n");
+                // }
             }
             //**** Writing formed beam value to shared memory struct *****
-            //packed as [NR_BEAMS][INTENRAL_TIME_SAMPLES]
+            //packed as [NR_BEAMS][INTENRAL_TIME_SAMPLES] - this could be improved, but no discussions around that have happened yet
             int iSharedIndexOffset = 2*(iBeamIndex*INTERNAL_TIME_SAMPLES + i);
             if(iAntIndex == 0){
                 pfBeamDataOutShared[iSharedIndexOffset] = pfBeamReductionStore[iRealIndexOut];
                 pfBeamDataOutShared[iSharedIndexOffset+1] = pfBeamReductionStore[iImagIndexOut];
-                //if(iChannelIndex == 0 && iThreadIndex == 0){
-                //    printf("%d %d %f %f\n",j,i,pfBeamReductionStore[iRealIndexOut],pfBeamReductionStore[iImagIndexOut]);
-                //    printf("%d %d %d %f %f\n",j,i,iSharedIndexOffset,pfBeamDataOutShared[iSharedIndexOffset],pfBeamDataOutShared[iSharedIndexOffset+1]);
+                //if(iChannelIndex == 0 && iThreadIndex == 0 && i == 0 && j == 0){
+                //    __syncthreads();
+                //    printf("\nThread Data: %d %d %d %d %f %f\n",j,i,iRealIndexOut,iImagIndexOut,pfBeamReductionStore[iRealIndexOut],pfBeamReductionStore[iImagIndexOut]);
+                //    //printf("%d %d %d %f %f\n",j,i,iSharedIndexOffset,pfBeamDataOutShared[iSharedIndexOffset],pfBeamDataOutShared[iSharedIndexOffset+1]);
                 //}
             }
         }
         __syncthreads();//This is here as the writing back to global memory does not necessarily follow the same thread indexing convention as generating the steering coeffs - dont hate me
         
+        // if(iChannelIndex == 0 && iThreadIndex == 0 && j == 1){
+        //     __syncthreads();
+        //     printf("\nShared Memory Beams %d %f %f\n",j,pfBeamDataOutShared[0],pfBeamDataOutShared[1]);
+        // }
+
         //***** Writing shared memory struct out to global memory *****
         int iTimeOffsetOut_32bitWords = iNumTransfersOut_32BitWords*j;
         if(iThreadIndex < iNumTransfersOut_32BitWords){
@@ -340,10 +363,17 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             int iSharedMemoryIndex = threadIdx.x;
             //((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
             ((uint32_t *)pfBeams)[iGlobalMemoryIndex] = ((uint32_t*)pfBeamDataOutShared)[iSharedMemoryIndex];
-            //if(j == 0 && iChannelIndex == 0){
-            //    printf("ThreadID: %d, GlobMemIndex: %d, Input: %f, Output: %f\n",iThreadIndex,iGlobalMemoryIndex,pfBeamDataOutShared[iSharedMemoryIndex],pfBeams[iGlobalMemoryIndex]);
-            //}
+            // if(j == 1 && iChannelIndex == 0 && iThreadIndex == 0){
+            //     __syncthreads();
+            //     //printf("ThreadID: %d, GlobMemIndex: %d, Input: %f, Output: %f\n",iThreadIndex,iGlobalMemoryIndex,pfBeamDataOutShared[iSharedMemoryIndex],pfBeams[iGlobalMemoryIndex]);
+            //     printf("%d %d %d %d %f %f\n",iThreadIndex,iGlobalMemoryIndex,iTimeOffsetOut_32bitWords,iChannelOffsetOut_32bitWords,pfBeamDataOutShared[iSharedMemoryIndex],pfBeams[iGlobalMemoryIndex]);
+            // }
         }
+
+        // if(iChannelIndex == 0 && iThreadIndex == 0 && j == 0){
+        //     __syncthreads();
+        //     printf("\nGlobal Memory %d %f %f\n",j,pfBeams[0],pfBeams[1]);
+        // }
     }
     
     __syncthreads();

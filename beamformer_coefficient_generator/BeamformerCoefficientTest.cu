@@ -1,5 +1,5 @@
 #include <cuComplex.h>
-#include <cmath>
+#include <cmath> //For floating point absolute value
 #include <iostream>
 #include <chrono>
 
@@ -19,10 +19,10 @@ float ts_diff(struct timespec first, struct timespec last)
 
 BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, BeamformerCoeffTest::SteeringCoefficientKernel eKernelOption):
     m_fFloatingPointTolerance(fFloatingPointTolerance),
-    m_ulSizeSteeringCoefficients(NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * sizeof(cuFloatComplex)),
+    m_ulSizeSteeringCoefficients(NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(float)),
     m_ulSizeDelayValues(NR_STATIONS * NR_BEAMS * sizeof(struct delay_vals)),
-    m_ulSizeInputAntennaData(NR_STATIONS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*2*sizeof(int8_t)),//Two is due to complex data
-    m_ulSizeOutputBeamData(NR_BEAMS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*2*sizeof(float)),
+    m_ulSizeInputAntennaData(NR_STATIONS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)),//Two is due to complex data
+    m_ulSizeOutputBeamData(NR_BEAMS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)),
     m_eKernelOption(eKernelOption)
 {   
     std::cout << m_ulSizeSteeringCoefficients/1000.0/1000.0 << " MB Allocated for steering coefficients" << std::endl;
@@ -234,9 +234,10 @@ void BeamformerCoeffTest::verify_output()
     auto start = std::chrono::steady_clock::now();
         
     //Allocating matric to store correct data
-    float * fCorrectDate = (float*)malloc(NR_SAMPLES_PER_CHANNEL*NR_BEAMS*NR_CHANNELS*NR_STATIONS*2*sizeof(float));
+    float * fCorrectCoeffs = (float*)malloc(NR_SAMPLES_PER_CHANNEL*NR_BEAMS*NR_CHANNELS*NR_STATIONS*2*sizeof(float));
     //return;
     //Generate correct data for all antennas, channels, timestamps and beam indices
+    //std::cout << "==============================" << std::endl;
     for (size_t t = 0; t < NR_SAMPLES_PER_CHANNEL; t++)
     {
         //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
@@ -250,12 +251,22 @@ void BeamformerCoeffTest::verify_output()
             {
                 for (size_t b = 0; b < NR_BEAMS; b++)
                 {   
+                    //This is here as some kernels have different ordering requirements. Probably should have split them into seperate classes, but I am commited now
+                    int iAntBeamOrdering;
+                    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
+                        iAntBeamOrdering = b*NR_STATIONS + a;
+                    }
+                    else
+                    {
+                        iAntBeamOrdering = a*NR_BEAMS + b;
+                    }
+                    
                     //Generate simulated data
-                    struct delay_vals sDelayVal = m_pHDelayValues[a*NR_BEAMS + b];
+                    struct delay_vals sDelayVal = m_pHDelayValues[iAntBeamOrdering];
                     float fDeltaTime = ts_diff(m_sReferenceTime_ns, sCurrentTime_ns);
                     float fDeltaDelay = sDelayVal.fDelayRate_sps*fDeltaTime;
                     float fDelayN = (sDelayVal.fDelayRate_sps + fDeltaDelay)*c*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
-                    float fDelayN2 = (sDelayVal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
+                    float fDelayN2 = (sDelayVal.fDelay_s + fDeltaDelay)*(NR_CHANNELS/2.0)*((float)M_PI)/(SAMPLING_PERIOD*NR_CHANNELS);
                     float fDeltaPhase = sDelayVal.fPhaseRate_radps*fDeltaTime;
                     float fPhase0 = sDelayVal.fPhase_rad - fDelayN2 + fDeltaPhase;
                     float fRotation = fDelayN + fPhase0;
@@ -263,14 +274,25 @@ void BeamformerCoeffTest::verify_output()
                     float fSteeringCoeffCorrectImag = sin(fRotation);
 
                     //Write steering coefficient to the array
-                    size_t ulCoeffIndex =  2*(t*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + a*NR_BEAMS + b);
-                    fCorrectDate[ulCoeffIndex] = fSteeringCoeffCorrectReal;
-                    fCorrectDate[ulCoeffIndex+1] = fSteeringCoeffCorrectImag;
+                    size_t ulCoeffIndex =  COMPLEXITY*(t*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + iAntBeamOrdering);
+                    fCorrectCoeffs[ulCoeffIndex] = fSteeringCoeffCorrectReal;
+                    fCorrectCoeffs[ulCoeffIndex+1] = fSteeringCoeffCorrectImag;
+
+                    // if(b == 0 && t ==0 && c == 0){
+                    //     std::cout << a << " " << sDelayVal.fDelay_s*1000000 << " " << sDelayVal.fDelayRate_sps*1000000 << " " << sDelayVal.fPhase_rad*1000000 << " " << sDelayVal.fPhaseRate_radps*1000000 << std::endl;
+                    //     std::cout << "Real: " << fSteeringCoeffCorrectReal << " Imag: " << fSteeringCoeffCorrectImag << std::endl;
+                        
+                    // }
+
+                    // if(a < 16 && b == 0 && t ==0 && c == 0){
+                    //     printf("a %d %f %f %f \n",a,fRotation,cosf(fRotation),sinf(fRotation));
+                    // }
 
                 }
             }
         }
     }
+    //std::cout << "==============================" << std::endl;
     auto end = std::chrono::steady_clock::now();
     std::cout << "CPU took " << (float)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()/1000.0 << " ms to generate correct steering coefficients." << std::endl;
 
@@ -280,39 +302,80 @@ void BeamformerCoeffTest::verify_output()
     case MULTIPLE_CHANNELS:
     case MULTIPLE_CHANNELS_AND_TIMESTAMPS:
         {
-            int temp = 0;
+            //int temp = 0;
             //Compare correct data to GPU generated data - this loop could be combined with the above loop, however this way makes it easier to time the CPU execution and add extra debug data if necessary
             for (size_t i = 0; i < NR_SAMPLES_PER_CHANNEL*NR_STATIONS*NR_CHANNELS*NR_BEAMS*2; i++)
             {
-                if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectDate[i]) > m_fFloatingPointTolerance /*|| (i > 49950)*/){
-                    std::cout << "Index: " << i << ". Generated Value: " << m_pfHSteeringCoeffs[i] << ". Correct Value: " << fCorrectDate[i] << std::endl;
-                    if(temp++ == 100){
+                if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectCoeffs[i]) > m_fFloatingPointTolerance /*|| (i > 49950)*/){
+                    std::cout << "Index: " << i << ". Generated Value: " << m_pfHSteeringCoeffs[i] << ". Correct Value: " << fCorrectCoeffs[i] << std::endl;
+                    //if(temp++ == 100){
                         m_iResult = -1;
+                        free(fCorrectCoeffs);
                         return;
-                    }
+                    //}
                 }
             }
 
-            free(fCorrectDate);
+            free(fCorrectCoeffs);
             m_iResult = 1;
         }
         break;
 
     case COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL:
         {
-            int8_t * pi8InData = m_pi8HInputAntennaData;
-            int8_t * pi8OutData = (int8_t*)m_pfHOutputBeams;
-            std::cout << "*****" << static_cast<double>(m_pfHOutputBeams[0]) << "******" << std::endl;
-            for (size_t i = 0; i < m_ulSizeInputAntennaData; i++)
+            int8_t * pi8InAntData = m_pi8HInputAntennaData;
+            float * pfOutData = m_pfHOutputBeams;
+            float * pfCorrectBeams = (float*)malloc(m_ulSizeOutputBeamData);
+            float * pfGeneratedBeams = m_pfHOutputBeams;
+
+            //std::cout << "*****" << static_cast<float>(pfGeneratedBeams[0]) << "******" << std::endl;
+            for (size_t c = 0; c < NR_CHANNELS; c++)
             {
-                if (pi8InData[i] != pi8OutData[i])
+                for (size_t t_ex = 0; t_ex < NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES; t_ex++)
                 {
-                    std::cout << i << " " << static_cast<int32_t>(pi8InData[i]) << " " << m_pfHOutputBeams[i] <<  std::endl;
-                    //m_iResult = -1;
-                    return;
+                    for (size_t b = 0; b < NR_BEAMS; b++)
+                    {
+                        for (size_t t_in = 0; t_in < INTERNAL_TIME_SAMPLES; t_in++)
+                        {
+                            int iBeamIndex = c*NR_SAMPLES_PER_CHANNEL*NR_BEAMS + t_ex*NR_BEAMS*INTERNAL_TIME_SAMPLES + b*INTERNAL_TIME_SAMPLES + t_in;
+                            //Generate Correct Value
+                            float fBeamSumReal = 0;
+                            float fBeamSumImag = 0;
+                            for (size_t a = 0; a < NR_STATIONS; a++)
+                            {
+                                size_t ulCoeffIndex =  COMPLEXITY*((t_ex*INTERNAL_TIME_SAMPLES+t_in)*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + b*NR_STATIONS + a);
+                                size_t ulAntSampleIndex = COMPLEXITY*(c*NR_SAMPLES_PER_CHANNEL*NR_STATIONS + t_ex*NR_STATIONS*INTERNAL_TIME_SAMPLES + a*INTERNAL_TIME_SAMPLES + t_in);
+                                //size_t ulSampleIndex = 
+                                float fRealSteeringCoeff = fCorrectCoeffs[ulCoeffIndex];
+                                float fImagSteeringCoeff = fCorrectCoeffs[ulCoeffIndex+1];
+                                int8_t iRealAntSample = pi8InAntData[ulAntSampleIndex];
+                                int8_t iImagAntSample = pi8InAntData[ulAntSampleIndex+1];
+                                fBeamSumReal+=fRealSteeringCoeff*iRealAntSample;
+                                fBeamSumImag+=fImagSteeringCoeff*iImagAntSample;
+                                //if(a < 16 && t_ex == 1){
+                                //    struct delay_vals sDelayValuesLocal = m_pHDelayValues[b*NR_STATIONS + a];
+                                //    std::cout << " Ant: " << a << " CoeffIndex: " << ulCoeffIndex << " Real: " << fRealSteeringCoeff << " Imag: " << fImagSteeringCoeff << ", Ant Val real:" << static_cast<int32_t>(iRealAntSample) << ", Ant Val Imag:" << static_cast<int32_t>(iImagAntSample) <<"\n\t Delay Vals: "<< sDelayValuesLocal.fDelay_s*1000000 << " " << sDelayValuesLocal.fDelayRate_sps*1000000 << " " << sDelayValuesLocal.fPhase_rad*1000000 << " " << sDelayValuesLocal.fPhaseRate_radps*1000000 << "\n\tSample*BW Real "<< fRealSteeringCoeff*iRealAntSample <<" Imag "<< fImagSteeringCoeff*iImagAntSample << std::endl;
+                                //}
+                            }
+                            if(std::fabs(fBeamSumReal-pfGeneratedBeams[COMPLEXITY*iBeamIndex]) > m_fFloatingPointTolerance || std::fabs(fBeamSumImag-pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) > m_fFloatingPointTolerance)
+                            {
+                                m_iResult = -1;
+                                std::cout << "Error Detected:" << std::endl;
+                                std::cout << "\tReal value: " << fBeamSumReal << ". Imag value: " << fBeamSumImag << std::endl;
+                                std::cout << "\tReal diff: " << std::fabs(fBeamSumReal-pfGeneratedBeams[COMPLEXITY*iBeamIndex]) << ". Imag diff: " << std::fabs(fBeamSumImag-pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) << ". Tolerance: "<< m_fFloatingPointTolerance << std::endl;
+                                std::cout << "\tIndices b:" << b << ", t_in: " << t_in << ", t_ex: " << t_ex << ", c: " << c << ". Combined Index:" << iBeamIndex << std::endl;
+                                std::cout << "\tReal: Simulated " << fBeamSumReal << " Generated " << pfGeneratedBeams[COMPLEXITY*iBeamIndex] << std::endl;
+                                std::cout << "\tImag: Simulated " << fBeamSumImag << " Generated " << pfGeneratedBeams[COMPLEXITY*iBeamIndex+1] << std::endl;
+                                free(pfCorrectBeams);
+                                return;
+                            }
+                        }
+                    }
                 }
             }
+            
             m_iResult = 1;
+            free(pfCorrectBeams);
             break;    
         }
     
