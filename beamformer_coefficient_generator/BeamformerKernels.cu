@@ -120,8 +120,8 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
 {
     //Calculate Relevant Indices
     int iBeamAntIndex = blockIdx.x*NUM_ANTBEAMS_PER_BLOCK + threadIdx.x % NUM_ANTBEAMS_PER_BLOCK;
-    int iAntIndex = iBeamAntIndex/NR_BEAMS;
-    int iBeamIndex = iBeamAntIndex - iAntIndex * NR_BEAMS;
+    //int iAntIndex = iBeamAntIndex/NR_BEAMS;
+    //int iBeamIndex = iBeamAntIndex - iAntIndex * NR_BEAMS;
     
     //Create shared memory arrays
     __shared__ struct delay_vals psSDelayVals[NUM_ANTBEAMS_PER_BLOCK];
@@ -220,9 +220,9 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     //Each sequential set of 64 threads calculates a single beam. All 1024 threads are used this way - needs to be modified for changing number of antennas
     //Can eventually take advantage of warp level operations
 
-    __shared__ float pfBeamReductionStore[NUM_THREADS_PER_BLOCK_MAX*COMPLEXITY];
-    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS*INTERNAL_TIME_SAMPLES*COMPLEXITY];
-    __shared__ float pfBeamDataOutShared[NR_BEAMS*INTERNAL_TIME_SAMPLES*COMPLEXITY];
+    __shared__ float pfBeamReductionStore[NR_BEAMS][NR_STATIONS][COMPLEXITY];
+    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
+    __shared__ float pfBeamDataOutShared[NR_BEAMS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
     struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
 
     // if(iThreadIndex == 0 && iChannelIndex == 0){
@@ -256,20 +256,20 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
         int iAntIndex = iThreadIndex - iBeamIndex * NR_STATIONS;
 
         //These 8 indeces are for the reduction operation, but they are declared here as they dont need to be part of the for loop
-        int iRealIndex0In = 4*iAntIndex + 0 + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iImagIndex0In = 4*iAntIndex + 1 + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iRealIndex1In = 4*iAntIndex + 2 + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iImagIndex1In = 4*iAntIndex + 3 + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iRealIndexOut = 2*iAntIndex + 0 + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iImagIndexOut = 2*iAntIndex + 1 + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iIndex0In = 2*iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iImagIndex0In = 4*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iIndex1In = 2*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iImagIndex1In = 4*iAntIndex + 3;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        int iIndexOut = iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iImagIndexOut = 2*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
 
         #pragma unroll
         for (int i = 0; i < INTERNAL_TIME_SAMPLES; i++)
         {
             //***** Get Antenna Sample Values *****
-            int iSampleIndex = COMPLEXITY*(iAntIndex*INTERNAL_TIME_SAMPLES + i);
-            int8_t i8AntValueReal = pi8AntennaDataInShared[iSampleIndex];//Performance bottleneck 
-            int8_t i8AntValueImag = pi8AntennaDataInShared[iSampleIndex+1];//Performance bottleneck
+            //int iSampleIndex = COMPLEXITY*(iAntIndex*INTERNAL_TIME_SAMPLES + i);
+            int8_t i8AntValueReal = pi8AntennaDataInShared[iAntIndex][i][0];//Performance bottleneck 
+            int8_t i8AntValueImag = pi8AntennaDataInShared[iAntIndex][i][1];//Performance bottleneck
             
             //***** Calculate Steering Coefficients *****
             int iTimeIndex = i + j * INTERNAL_TIME_SAMPLES;
@@ -286,8 +286,8 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
 
             //***** Multiply Antenna Sample by steering coefficient *****
-            pfBeamReductionStore[iThreadIndex*COMPLEXITY] = fSteeringCoeffCorrectReal * ((float)i8AntValueReal);//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
-            pfBeamReductionStore[iThreadIndex*COMPLEXITY+1] = fSteeringCoeffCorrectImag * ((float)i8AntValueImag);//Performance bottleneck
+            pfBeamReductionStore[iBeamIndex][iAntIndex][0] = fSteeringCoeffCorrectReal * ((float)i8AntValueReal);//Performance bottleneck goes from 0.2ms to 0.6ms kernel run time - need to figure it out
+            pfBeamReductionStore[iBeamIndex][iAntIndex][1] = fSteeringCoeffCorrectImag * ((float)i8AntValueImag);//Performance bottleneck
 
             // if(iChannelIndex == 0 && iThreadIndex < 16 && j == 1 && i==0){
             //     __syncthreads();
@@ -301,6 +301,9 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             //The shared memory writes  pfBeamReductionStore[iRealIndexOut] = iTempOutReal are expensive, I will try implement this with warp level primitives 
             //This section is a bit of a bottleneck - runtime goes from 0.75 ms to 1.03ms
 
+            float fTempOutReal;// = pfBeamReductionStore[iBeamIndex][iIndex0In][0];
+            float fTempOutImag;// = pfBeamReductionStore[iBeamIndex][iIndex0In][1];
+
             #pragma unroll
             for (int iStep = 2; iStep <= 64; iStep=iStep<<1)
             {
@@ -310,20 +313,25 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
                 //    printf("%d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndex0,iRealIndex1,iImagIndex0,iImagIndex1);
                 //}
                 if(iAntIndex < iNumThreads){
-                    float iTempOutReal = pfBeamReductionStore[iRealIndex0In] + pfBeamReductionStore[iRealIndex1In];
-                    float iTempOutImag = pfBeamReductionStore[iImagIndex0In] + pfBeamReductionStore[iImagIndex1In];
-                    // if(i == 0 && iChannelIndex == 0 && iThreadIndex < 64 && j==0){
-                    //     __syncthreads();
-                    //     //if(iThreadIndex==0){
+                    fTempOutReal = pfBeamReductionStore[iBeamIndex][iIndex0In][0] + pfBeamReductionStore[iBeamIndex][iIndex1In][0];
+                    fTempOutImag = pfBeamReductionStore[iBeamIndex][iIndex0In][1] + pfBeamReductionStore[iBeamIndex][iIndex1In][1];
+                    //if(i == 0 && iChannelIndex == 0 && iThreadIndex ==0 && j==0){
+                    //    __syncthreads();
+                    //    printf("%f %f %f %f\n",iTempOutReal,pfBeamReductionStore[iRealIndex0In],pfBeamReductionStore[iRealIndex1In]);
+                         //if(iThreadIndex==0){
                     //     //    printf("==============================================");
                     //     //}
                     //     //printf("%d %d %d %d %d %d %d %d\n",iThreadIndex,iStep,iRealIndexOut,iImagIndexOut,iRealIndex0In,iRealIndex1In,iImagIndex0In,iImagIndex1In);
                     //     printf("Reduction %d %d %f %f %f %f \n\t %d %d %d %d %f %f\n",iThreadIndex,iStep,pfBeamReductionStore[iRealIndex0In],pfBeamReductionStore[iRealIndex1In],pfBeamReductionStore[iImagIndex0In],pfBeamReductionStore[iImagIndex1In],iRealIndex0In,iRealIndex1In,iRealIndexOut, iImagIndexOut, iTempOutReal,iTempOutImag);
-                    // }
+                    //}
 
                     __syncwarp();
-                    pfBeamReductionStore[iRealIndexOut] = iTempOutReal;//So this writing to shared memory is a bit of a bottleneck. For iNumThreads<=32 I think that using __shfl_down_sync is going to help, significantly, as in you would be stupid not to do this. Refer to this: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-description
-                    pfBeamReductionStore[iImagIndexOut] = iTempOutImag;
+                    //if(i == 0 && iChannelIndex == 0 && iThreadIndex ==0 && j==0){
+                    //     //__syncthreads();
+                    //    printf("%d %f = %f + %f\n",iStep,fTempOutReal,pfBeamReductionStore[iBeamIndex][iIndex0In][0],pfBeamReductionStore[iBeamIndex][iIndex1In][0]);
+                    //}
+                    pfBeamReductionStore[iBeamIndex][iIndexOut][0] = fTempOutReal;//So this writing to shared memory is a bit of a bottleneck. For iNumThreads<=32 I think that using __shfl_down_sync is going to help, significantly, as in you would be stupid not to do this. Refer to this: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-description
+                    pfBeamReductionStore[iBeamIndex][iIndexOut][1] = fTempOutImag;
                 }
 
                 if(iNumThreads<=32){
@@ -338,10 +346,10 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             }
             //**** Writing formed beam value to shared memory struct *****
             //packed as [NR_BEAMS][INTENRAL_TIME_SAMPLES] - this could be improved, but no discussions around that have happened yet
-            int iSharedIndexOffset = 2*(iBeamIndex*INTERNAL_TIME_SAMPLES + i);
+            //int iSharedIndexOffset = 2*(iBeamIndex*INTERNAL_TIME_SAMPLES + i);
             if(iAntIndex == 0){
-                pfBeamDataOutShared[iSharedIndexOffset] = pfBeamReductionStore[iRealIndexOut];
-                pfBeamDataOutShared[iSharedIndexOffset+1] = pfBeamReductionStore[iImagIndexOut];
+                pfBeamDataOutShared[iBeamIndex][i][0] = pfBeamReductionStore[iBeamIndex][iIndexOut][0];
+                pfBeamDataOutShared[iBeamIndex][i][1] = pfBeamReductionStore[iBeamIndex][iIndexOut][1];
                 //if(iChannelIndex == 0 && iThreadIndex == 0 && i == 0 && j == 0){
                 //    __syncthreads();
                 //    printf("\nThread Data: %d %d %d %d %f %f\n",j,i,iRealIndexOut,iImagIndexOut,pfBeamReductionStore[iRealIndexOut],pfBeamReductionStore[iImagIndexOut]);
