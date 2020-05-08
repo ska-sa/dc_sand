@@ -42,6 +42,7 @@ BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, Beamform
         m_sReferenceTime_ns.tv_nsec += (1000000000 - TIME_SHIFT);
     }
     
+
     //Initialising Memory
     GPU_ERRCHK(cudaMallocHost((void**)&m_pHDelayValues,m_ulSizeDelayValues));
     GPU_ERRCHK(cudaMalloc((void**)&m_pDDelayValues,m_ulSizeDelayValues));
