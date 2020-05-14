@@ -61,7 +61,8 @@ __global__ void calculate_beamweights_grouped_channels(
                                 struct timespec sCurrentTime, 
                                 struct timespec sRefTime,
                                 struct delay_vals *psDelayVals, 
-                                float* pfCplxSteeringCoeffs)
+                                float* pfCplxSteeringCoeffs,
+                                bool b16BitOutput)
 {
     //size_t delay_vals_length = 64*300;//n_antennas*n_beams;
     //int blockId = blockIdx.x+ blockIdx.y * gridDim.x+ gridDim.x * gridDim.y * blockIdx.z;
@@ -102,10 +103,18 @@ __global__ void calculate_beamweights_grouped_channels(
             float fRotation = fDelayN + fPhase0;
             float fSteeringCoeffCorrectReal;// = __cosf(fRotation);//At least i think its the real one - may need to check this if its important
             float fSteeringCoeffCorrectImag;// = __sinf(fRotation);
-            __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
-            ulOutputIndex = (iChannelIndex*NR_STATIONS*NR_BEAMS + iInterChannelIndex)*2;
-            pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
-            pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
+            sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
+            ulOutputIndex = (iChannelIndex*NR_STATIONS*NR_BEAMS + iInterChannelIndex);
+            
+            if(!b16BitOutput){
+                ulOutputIndex*=2;
+                pfCplxSteeringCoeffs[ulOutputIndex] = fSteeringCoeffCorrectReal;//; = //make_cuFloatComplex(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+                pfCplxSteeringCoeffs[ulOutputIndex+1] = fSteeringCoeffCorrectImag;
+            }else{
+                __half2 h2PackedOutput = __floats2half2_rn(fSteeringCoeffCorrectReal,fSteeringCoeffCorrectImag);
+                //printf("Orig %f Converted %f %f\n",fSteeringCoeffCorrectReal,__high2float(h2PackedOutput), __low2float(h2PackedOutput));
+                ((__half2*)pfCplxSteeringCoeffs)[ulOutputIndex] = h2PackedOutput;
+            }
         }
     }
     //printf("Thread Id %i , Block Id %i, grid: x,y,z: (%i , %i, %i) thread: x,y,z: (%i, %i, %i)\n",threadId,blockId,blockIdx.x,blockIdx.y,blockIdx.z,threadIdx.x,threadIdx.y,threadIdx.z);
@@ -197,6 +206,9 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
                                 int8_t * pi8AntennaData)
 {
     __shared__ delay_vals psDelayValsShared[NR_STATIONS*NR_BEAMS];
+    //__shared__ float pfBeamReductionStore[NR_BEAMS][NR_STATIONS][COMPLEXITY];
+    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
+    __shared__ float warpSums[NR_BEAMS][INTERNAL_TIME_SAMPLES][NR_STATIONS/32][COMPLEXITY];
     
     int iThreadIndex = threadIdx.x;
     int iChannelIndex = blockIdx.x;
@@ -220,10 +232,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     //Each sequential set of 64 threads calculates a single beam. All 1024 threads are used this way - needs to be modified for changing number of antennas
     //Can eventually take advantage of warp level operations
 
-    //__shared__ float pfBeamReductionStore[NR_BEAMS][NR_STATIONS][COMPLEXITY];
-    __shared__ int8_t pi8AntennaDataInShared[NR_STATIONS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
-    __shared__ float warpSums[NR_BEAMS][INTERNAL_TIME_SAMPLES][NR_STATIONS/32][2];
-    __shared__ float pfBeamDataOutShared[NR_BEAMS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
+    //__shared__ float pfBeamDataOutShared[NR_BEAMS][INTERNAL_TIME_SAMPLES][COMPLEXITY];
     struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
 
     // if(iThreadIndex == 0 && iChannelIndex == 0){
@@ -257,11 +266,11 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
         int iAntIndex = iThreadIndex - iBeamIndex * NR_STATIONS;
 
         //These 8 indeces are for the reduction operation, but they are declared here as they dont need to be part of the for loop
-        int iIndex0In = 2*iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iIndex0In = 2*iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
         //int iImagIndex0In = 4*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iIndex1In = 2*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iIndex1In = 2*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
         //int iImagIndex1In = 4*iAntIndex + 3;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
-        int iIndexOut = iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
+        //int iIndexOut = iAntIndex + 0;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
         //int iImagIndexOut = 2*iAntIndex + 1;// + iBeamIndex*NR_STATIONS*COMPLEXITY;
 
         #pragma unroll
@@ -371,7 +380,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
         int iTimeOffsetOut_32bitWords = iNumTransfersOut_32BitWords*j;
         if(iThreadIndex < iNumTransfersOut_32BitWords){
             int iGlobalMemoryIndex = iThreadIndex + iTimeOffsetOut_32bitWords + iChannelOffsetOut_32bitWords;
-            int iSharedMemoryIndex = threadIdx.x;
+            //int iSharedMemoryIndex = threadIdx.x;
             int iSharedMemBeamIndex = (iThreadIndex)/(INTERNAL_TIME_SAMPLES*COMPLEXITY);
             int iSharedMemTimeVal = (iThreadIndex-iSharedMemBeamIndex*INTERNAL_TIME_SAMPLES*COMPLEXITY)/(COMPLEXITY);
             int iSharedMemComplex = iThreadIndex%COMPLEXITY;

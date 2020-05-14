@@ -24,7 +24,13 @@ class BeamformerCoeffTest : public UnitTest
             COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL
         };
 
-        BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption);
+        enum SteeringCoefficientBitWidth
+        {
+            b16,
+            b32
+        };
+
+        BeamformerCoeffTest(float fFloatingPointTolerance, SteeringCoefficientKernel eKernelOption, SteeringCoefficientBitWidth eBitWidth);
         ~BeamformerCoeffTest();
 
         /** \brief Overriden function to calculate GPU utilisation of steering coefficient generation
@@ -91,6 +97,9 @@ class BeamformerCoeffTest : public UnitTest
 
         //This stores the kernel that will be executed
         SteeringCoefficientKernel  m_eKernelOption;
+
+        //This stores the number of bits that will be generated
+        SteeringCoefficientBitWidth m_eBitWidth;
 
         ///Generates the kernel dimensions. This is called in the constructor and the only reason that it is a seperate function is to keep the constructor clean. 
         void generate_GPU_kernel_dimensions();

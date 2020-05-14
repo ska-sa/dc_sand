@@ -17,14 +17,26 @@ float ts_diff(struct timespec first, struct timespec last)
     return time_difference;
 }
 
-BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, BeamformerCoeffTest::SteeringCoefficientKernel eKernelOption):
+BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, BeamformerCoeffTest::SteeringCoefficientKernel eKernelOption, BeamformerCoeffTest::SteeringCoefficientBitWidth eBitWidth):
     m_fFloatingPointTolerance(fFloatingPointTolerance),
-    m_ulSizeSteeringCoefficients(NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(float)),
     m_ulSizeDelayValues(NR_STATIONS * NR_BEAMS * sizeof(struct delay_vals)),
     m_ulSizeInputAntennaData(NR_STATIONS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)),//Two is due to complex data
     m_ulSizeOutputBeamData(NR_BEAMS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)),
-    m_eKernelOption(eKernelOption)
+    m_eKernelOption(eKernelOption),
+    m_eBitWidth(eBitWidth)
 {   
+
+    if(m_eBitWidth == b16){
+        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(uint16_t);
+    }else{
+        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(float);
+    }
+
+    if((m_eKernelOption == NAIVE || m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL) && m_eBitWidth == b16){
+        std::cout << "This kernel does not support 16 bit steering coefficients." << std::endl;
+        throw "This kernel does not support 16 bit steering coefficients.";
+    }
+
     std::cout << m_ulSizeSteeringCoefficients/1000.0/1000.0 << " MB Allocated for steering coefficients" << std::endl;
     std::cout << m_ulSizeDelayValues/1000.0/1000.0 << " MB Allocated for delay values" << std::endl;
     std::cout << m_ulSizeInputAntennaData/1000.0/1000.0 << " MB Allocated for input antenna data" << std::endl;
@@ -179,6 +191,12 @@ void BeamformerCoeffTest::transfer_HtoD()
 
 void BeamformerCoeffTest::run_kernel()
 {
+
+    bool b16BitOutput = false;
+    if(m_eBitWidth == b16){
+        b16BitOutput = true;
+    }
+
     switch (m_eKernelOption)
     {
         case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
@@ -201,13 +219,13 @@ void BeamformerCoeffTest::run_kernel()
             sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
             long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
             sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
-            calculate_beamweights_grouped_channels<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);
+            calculate_beamweights_grouped_channels<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex,b16BitOutput);
         }
         break;
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
         {
-            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs,false);
+            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs,b16BitOutput);
         }
         break;
 
@@ -232,6 +250,12 @@ void BeamformerCoeffTest::transfer_DtoH()
 
 void BeamformerCoeffTest::verify_output()
 {   
+    if(m_eBitWidth == b16){
+        std::cout << "Not verifying 16 bit steering coefficients - skipping this step and reporting success" << std::endl;
+        m_iResult = 1;
+        return;
+    }
+
     auto start = std::chrono::steady_clock::now();
         
     //Allocating matric to store correct data
