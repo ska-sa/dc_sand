@@ -62,11 +62,11 @@ class BeamformerCoeffTest : public UnitTest
         float m_fFloatingPointTolerance;
 
         //Host pointers Delay Values Generation
-        delay_vals *m_pHDelayValues;
+        struct delay_vals *m_pHDelayValues;
         float *m_pfHSteeringCoeffs;
 
         //Device pointers Delay Value Generation
-        delay_vals *m_pDDelayValues;
+        struct delay_vals *m_pDDelayValues;
         float *m_pfDSteeringCoeffs;
 
         //Host pointers beamformer
@@ -101,7 +101,7 @@ class BeamformerCoeffTest : public UnitTest
         //This stores the number of bits that will be generated
         SteeringCoefficientBitWidth m_eBitWidth;
 
-        ///Generates the kernel dimensions. This is called in the constructor and the only reason that it is a seperate function is to keep the constructor clean. 
+        ///Generates the kernel dimensions. This is called in the constructor and the only reason that it is a seperate function is to keep the constructor readable. 
         void generate_GPU_kernel_dimensions();
 
 };

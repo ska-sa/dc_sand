@@ -13,39 +13,53 @@ float ts_diff(struct timespec first, struct timespec last)
 {
     float time_difference = (float) last.tv_sec - (float) first.tv_sec;
     long nanosec_difference = last.tv_nsec - first.tv_nsec;
-    time_difference += (float) nanosec_difference / 1e9f; //Should work if this is negative as well?
+    time_difference += (float) nanosec_difference / 1e9f;
     return time_difference;
 }
 
-BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, BeamformerCoeffTest::SteeringCoefficientKernel eKernelOption, BeamformerCoeffTest::SteeringCoefficientBitWidth eBitWidth):
+BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, 
+        BeamformerCoeffTest::SteeringCoefficientKernel eKernelOption, 
+        BeamformerCoeffTest::SteeringCoefficientBitWidth eBitWidth):
     m_fFloatingPointTolerance(fFloatingPointTolerance),
     m_ulSizeDelayValues(NR_STATIONS * NR_BEAMS * sizeof(struct delay_vals)),
-    m_ulSizeInputAntennaData(NR_STATIONS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)),//Two is due to complex data
-    m_ulSizeOutputBeamData(NR_BEAMS*NR_CHANNELS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)),
+    m_ulSizeInputAntennaData(NR_STATIONS * NR_CHANNELS * NR_SAMPLES_PER_CHANNEL * COMPLEXITY * sizeof(int8_t)),
+    m_ulSizeOutputBeamData(NR_BEAMS * NR_CHANNELS * NR_SAMPLES_PER_CHANNEL * COMPLEXITY * sizeof(float)),
     m_eKernelOption(eKernelOption),
     m_eBitWidth(eBitWidth)
 {   
 
-    if(m_eBitWidth == b16){
-        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(uint16_t);
-    }else{
-        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL*NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(float);
+    //Checking that specified mode is compatible with given parameters
+    if(m_eBitWidth == b16)
+    {
+        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL * NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(uint16_t);
+    }else
+    {
+        m_ulSizeSteeringCoefficients = NR_SAMPLES_PER_CHANNEL * NR_CHANNELS * NR_STATIONS * NR_BEAMS * COMPLEXITY * sizeof(float);
     }
 
-    if((m_eKernelOption == NAIVE || m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL) && m_eBitWidth == b16){
+    if((m_eKernelOption == NAIVE || m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL) && m_eBitWidth == b16)
+    {
         std::cout << "This kernel does not support 16 bit steering coefficients." << std::endl;
         throw "This kernel does not support 16 bit steering coefficients.";
     }
 
+    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL && (NR_BEAMS != 16 || NR_STATIONS != 64))
+    {
+        std::cout << "The COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL kernel only supports 16 beams and 64 antennas at the moment." << std::endl;
+        throw "The COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL kernel only supports 16 beams and 64 antennas at the moment.";
+    }
+
+    //Outputing allocated sizes for sanity check
     std::cout << m_ulSizeSteeringCoefficients/1000.0/1000.0 << " MB Allocated for steering coefficients" << std::endl;
     std::cout << m_ulSizeDelayValues/1000.0/1000.0 << " MB Allocated for delay values" << std::endl;
     std::cout << m_ulSizeInputAntennaData/1000.0/1000.0 << " MB Allocated for input antenna data" << std::endl;
     std::cout << m_ulSizeOutputBeamData/1000.0/1000.0 << " MB Allocated for output beam data" << std::endl;
+
     //Generate a single reference time on initialisation
     struct timespec m_sReferenceTime_ns;
     clock_gettime(CLOCK_MONOTONIC, &m_sReferenceTime_ns);
      #define TIME_SHIFT  50000
-     //Not quite sure what this is here for
+     //Not quite sure what this is here for - copy of a copy of a copy
     if (m_sReferenceTime_ns.tv_nsec >= TIME_SHIFT)
         m_sReferenceTime_ns.tv_nsec -= TIME_SHIFT;
     else
@@ -56,19 +70,20 @@ BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance, Beamform
     
 
     //Initialising Memory
-    GPU_ERRCHK(cudaMallocHost((void**)&m_pHDelayValues,m_ulSizeDelayValues));
-    GPU_ERRCHK(cudaMalloc((void**)&m_pDDelayValues,m_ulSizeDelayValues));
+    GPU_ERRCHK(cudaMallocHost((void**)&m_pHDelayValues, m_ulSizeDelayValues));
+    GPU_ERRCHK(cudaMalloc((void**)&m_pDDelayValues, m_ulSizeDelayValues));
+    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+    {
+        GPU_ERRCHK(cudaMallocHost((void**)&m_pfHSteeringCoeffs, m_ulSizeSteeringCoefficients));
+        GPU_ERRCHK(cudaMalloc((void**)&m_pfDSteeringCoeffs, m_ulSizeSteeringCoefficients));
+    }
+    else
+    {
+        GPU_ERRCHK(cudaMallocHost((void**)&m_pi8HInputAntennaData, m_ulSizeInputAntennaData));
+        GPU_ERRCHK(cudaMalloc((void**)&m_pi8DInputAntennaData, m_ulSizeInputAntennaData));
 
-
-    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
-        GPU_ERRCHK(cudaMallocHost((void**)&m_pfHSteeringCoeffs,m_ulSizeSteeringCoefficients));
-        GPU_ERRCHK(cudaMalloc((void**)&m_pfDSteeringCoeffs,m_ulSizeSteeringCoefficients));
-    }else{
-        GPU_ERRCHK(cudaMallocHost((void**)&m_pi8HInputAntennaData,m_ulSizeInputAntennaData));
-        GPU_ERRCHK(cudaMalloc((void**)&m_pi8DInputAntennaData,m_ulSizeInputAntennaData));
-
-        GPU_ERRCHK(cudaMallocHost((void**)&m_pfHOutputBeams,m_ulSizeOutputBeamData));
-        GPU_ERRCHK(cudaMalloc((void**)&m_pfDOutputBeams,m_ulSizeOutputBeamData));
+        GPU_ERRCHK(cudaMallocHost((void**)&m_pfHOutputBeams, m_ulSizeOutputBeamData));
+        GPU_ERRCHK(cudaMalloc((void**)&m_pfDOutputBeams, m_ulSizeOutputBeamData));
     }
 
     //Generating Grid and Block Sizes
@@ -79,10 +94,13 @@ BeamformerCoeffTest::~BeamformerCoeffTest()
 {
     GPU_ERRCHK(cudaFree(m_pDDelayValues));
     GPU_ERRCHK(cudaFreeHost(m_pHDelayValues));
-    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
+    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+    {
         GPU_ERRCHK(cudaFree(m_pfDSteeringCoeffs));
         GPU_ERRCHK(cudaFreeHost(m_pfHSteeringCoeffs));
-    }else{
+    }
+    else
+    {
         GPU_ERRCHK(cudaFree(m_pfDOutputBeams));
         GPU_ERRCHK(cudaFreeHost(m_pfHOutputBeams));
         GPU_ERRCHK(cudaFree(m_pi8DInputAntennaData));
@@ -90,24 +108,29 @@ BeamformerCoeffTest::~BeamformerCoeffTest()
     }
 }
 
-void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
+void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
+{
     switch (m_eKernelOption)
     {
-    //Refer to corresponding kernel functions for explanations as to how these blocks are generated
+        //Refer to corresponding kernel functions for explanations as to how these blocks are generated
         case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
         {
             size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
             size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
             size_t ulNumThreadsPerBlock = 0;
-            if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
+            if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0)
+            {
                 ulNumBlocksPerChannel++;
             }
-            if(ulNumBlocksPerChannel > 1){
+            if(ulNumBlocksPerChannel > 1)
+            {
                 ulNumThreadsPerBlock = NUM_THREADS_PER_BLOCK;
-            }else{
+            }
+            else
+            {
                 ulNumThreadsPerBlock = ulNumSamplesPerChannel;
             }
-            m_cudaGridSize = dim3(ulNumBlocksPerChannel,NR_CHANNELS);//dim3(7,1);//
+            m_cudaGridSize = dim3(ulNumBlocksPerChannel, NR_CHANNELS);
             m_cudaBlockSize = dim3(ulNumThreadsPerBlock);
         }
         break;
@@ -117,19 +140,23 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
             int numSamplesPerChannel = NR_STATIONS*NR_BEAMS;
             int numBlocksPerChannel = numSamplesPerChannel/NUM_THREADS_PER_BLOCK;
             int threadsPerBlock = 0;
-            if(numSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0){
+            if(numSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0)
+            {
                 numBlocksPerChannel++;
             }
-            if(numBlocksPerChannel > 1){
+            if(numBlocksPerChannel > 1)
+            {
                 threadsPerBlock = NUM_THREADS_PER_BLOCK;
-            }else{
+            }else
+            {
                 threadsPerBlock = numSamplesPerChannel;
             }
             int gridSizeChannels = NR_CHANNELS/NUM_CHANNELS_PER_KERNEL;
-            if(NR_CHANNELS % NUM_CHANNELS_PER_KERNEL != 0){
+            if(NR_CHANNELS % NUM_CHANNELS_PER_KERNEL != 0)
+            {
                 gridSizeChannels++;
             }
-            m_cudaGridSize = dim3(numBlocksPerChannel,gridSizeChannels);
+            m_cudaGridSize = dim3(numBlocksPerChannel, gridSizeChannels);
             m_cudaBlockSize = dim3(threadsPerBlock);
         }
         break;
@@ -138,7 +165,8 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions(){
         {
             size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
             size_t ulNumBlocks = ulNumSamplesPerChannel/NUM_ANTBEAMS_PER_BLOCK;
-            if(ulNumSamplesPerChannel%NUM_ANTBEAMS_PER_BLOCK != 0){
+            if(ulNumSamplesPerChannel%NUM_ANTBEAMS_PER_BLOCK != 0)
+            {
                 ulNumBlocks++;
             }
             m_cudaGridSize = dim3(ulNumBlocks);//dim3(7,1);//
@@ -171,7 +199,8 @@ void BeamformerCoeffTest::simulate_input()
         //printf("%f %f %f %f\n",m_pHDelayValues[i].fDelay_s,m_pHDelayValues[i].fDelayRate_sps,m_pHDelayValues[i].fPhase_rad,m_pHDelayValues[i].fPhaseRate_radps);
     }
 
-    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
+    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+    {
         for (size_t i = 0; i < m_ulSizeInputAntennaData; i++)
         {
             m_pi8HInputAntennaData[i] = static_cast<int8_t>(i);
@@ -183,8 +212,9 @@ void BeamformerCoeffTest::transfer_HtoD()
 {
 
     GPU_ERRCHK(cudaMemcpy(m_pDDelayValues,m_pHDelayValues,m_ulSizeDelayValues,cudaMemcpyHostToDevice));
-    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
-        GPU_ERRCHK(cudaMemcpy(m_pi8DInputAntennaData,m_pi8HInputAntennaData,m_ulSizeInputAntennaData,cudaMemcpyHostToDevice));
+    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+    {
+        GPU_ERRCHK(cudaMemcpy(m_pi8DInputAntennaData, m_pi8HInputAntennaData, m_ulSizeInputAntennaData, cudaMemcpyHostToDevice));
     }
 
 }
@@ -193,7 +223,8 @@ void BeamformerCoeffTest::run_kernel()
 {
 
     bool b16BitOutput = false;
-    if(m_eBitWidth == b16){
+    if(m_eBitWidth == b16)
+    {
         b16BitOutput = true;
     }
 
@@ -207,7 +238,7 @@ void BeamformerCoeffTest::run_kernel()
             sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
             long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
             sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
-            calculate_beamweights_naive<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex);   
+            calculate_beamweights_naive<<<m_cudaGridSize, m_cudaBlockSize>>>(sCurrentTime_ns, m_sReferenceTime_ns, m_pDDelayValues, m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*COMPLEXITY*ulTimeIndex);   
         }
         break;
 
@@ -219,19 +250,19 @@ void BeamformerCoeffTest::run_kernel()
             sCurrentTime_ns.tv_sec = m_sReferenceTime_ns.tv_sec;
             long lTimeStep = ulTimeIndex*SAMPLING_PERIOD*1e9*FFT_SIZE;
             sCurrentTime_ns.tv_nsec = m_sReferenceTime_ns.tv_nsec + lTimeStep;
-            calculate_beamweights_grouped_channels<<<m_cudaGridSize,m_cudaBlockSize>>>(sCurrentTime_ns,m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*2*ulTimeIndex,b16BitOutput);
+            calculate_beamweights_grouped_channels<<<m_cudaGridSize, m_cudaBlockSize>>>(sCurrentTime_ns, m_sReferenceTime_ns, m_pDDelayValues,m_pfDSteeringCoeffs+NR_STATIONS*NR_CHANNELS*NR_BEAMS*COMPLEXITY*ulTimeIndex, b16BitOutput);
         }
         break;
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
         {
-            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pDDelayValues,m_pfDSteeringCoeffs,b16BitOutput);
+            calculate_beamweights_grouped_channels_and_timestamps<<<m_cudaGridSize, m_cudaBlockSize>>>(m_sReferenceTime_ns, m_pDDelayValues, m_pfDSteeringCoeffs,b16BitOutput);
         }
         break;
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL :
         {
-            calculate_beamweights_and_beamform_single_channel<<<m_cudaGridSize,m_cudaBlockSize>>>(m_sReferenceTime_ns,m_pDDelayValues,m_pfDOutputBeams,m_pi8HInputAntennaData);
+            calculate_beamweights_and_beamform_single_channel<<<m_cudaGridSize, m_cudaBlockSize>>>(m_sReferenceTime_ns, m_pDDelayValues, m_pfDOutputBeams, m_pi8HInputAntennaData);
         }
     }
 }
@@ -240,17 +271,20 @@ void BeamformerCoeffTest::transfer_DtoH()
 {
     if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
     {
-        GPU_ERRCHK(cudaMemcpy(m_pfHSteeringCoeffs,m_pfDSteeringCoeffs,m_ulSizeSteeringCoefficients,cudaMemcpyDeviceToHost));
+        GPU_ERRCHK(cudaMemcpy(m_pfHSteeringCoeffs, m_pfDSteeringCoeffs, m_ulSizeSteeringCoefficients, cudaMemcpyDeviceToHost));
     }
     else
     {
-        GPU_ERRCHK(cudaMemcpy(m_pfHOutputBeams,m_pfDOutputBeams,m_ulSizeOutputBeamData,cudaMemcpyDeviceToHost));
+        GPU_ERRCHK(cudaMemcpy(m_pfHOutputBeams, m_pfDOutputBeams, m_ulSizeOutputBeamData, cudaMemcpyDeviceToHost));
     }
 }
 
 void BeamformerCoeffTest::verify_output()
 {   
-    if(m_eBitWidth == b16){
+
+    //C++ does not have native support for 16 bit floats - I have just skipped the correctness checking for now in the 16 bit float case.
+    if(m_eBitWidth == b16)
+    {
         std::cout << "Not verifying 16 bit steering coefficients - skipping this step and reporting success" << std::endl;
         m_iResult = 1;
         return;
@@ -260,9 +294,7 @@ void BeamformerCoeffTest::verify_output()
         
     //Allocating matric to store correct data
     float * fCorrectCoeffs = (float*)malloc(NR_SAMPLES_PER_CHANNEL*NR_BEAMS*NR_CHANNELS*NR_STATIONS*2*sizeof(float));
-    //return;
     //Generate correct data for all antennas, channels, timestamps and beam indices
-    //std::cout << "==============================" << std::endl;
     for (size_t t = 0; t < NR_SAMPLES_PER_CHANNEL; t++)
     {
         //Todo - subtract fix the tv_sec field when tv_ns goes above 999999999
@@ -278,7 +310,8 @@ void BeamformerCoeffTest::verify_output()
                 {   
                     //This is here as some kernels have different ordering requirements. Probably should have split them into seperate classes, but I am commited now
                     int iAntBeamOrdering;
-                    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
+                    if(m_eKernelOption == COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+                    {
                         iAntBeamOrdering = b*NR_STATIONS + a;
                     }
                     else
@@ -302,22 +335,10 @@ void BeamformerCoeffTest::verify_output()
                     size_t ulCoeffIndex =  COMPLEXITY*(t*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + iAntBeamOrdering);
                     fCorrectCoeffs[ulCoeffIndex] = fSteeringCoeffCorrectReal;
                     fCorrectCoeffs[ulCoeffIndex+1] = fSteeringCoeffCorrectImag;
-
-                    // if(b == 0 && t ==0 && c == 0){
-                    //     std::cout << a << " " << sDelayVal.fDelay_s*1000000 << " " << sDelayVal.fDelayRate_sps*1000000 << " " << sDelayVal.fPhase_rad*1000000 << " " << sDelayVal.fPhaseRate_radps*1000000 << std::endl;
-                    //     std::cout << "Real: " << fSteeringCoeffCorrectReal << " Imag: " << fSteeringCoeffCorrectImag << std::endl;
-                        
-                    // }
-
-                    // if(a < 16 && b == 0 && t ==0 && c == 0){
-                    //     printf("a %d %f %f %f \n",a,fRotation,cosf(fRotation),sinf(fRotation));
-                    // }
-
                 }
             }
         }
     }
-    //std::cout << "==============================" << std::endl;
     auto end = std::chrono::steady_clock::now();
     std::cout << "CPU took " << (float)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()/1000.0 << " ms to generate correct steering coefficients." << std::endl;
 
@@ -327,20 +348,17 @@ void BeamformerCoeffTest::verify_output()
     case MULTIPLE_CHANNELS:
     case MULTIPLE_CHANNELS_AND_TIMESTAMPS:
         {
-            //int temp = 0;
             //Compare correct data to GPU generated data - this loop could be combined with the above loop, however this way makes it easier to time the CPU execution and add extra debug data if necessary
             for (size_t i = 0; i < NR_SAMPLES_PER_CHANNEL*NR_STATIONS*NR_CHANNELS*NR_BEAMS*2; i++)
             {
-                if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectCoeffs[i]) > m_fFloatingPointTolerance /*|| (i > 49950)*/){
+                if(std::abs(m_pfHSteeringCoeffs[i] - fCorrectCoeffs[i]) > m_fFloatingPointTolerance)
+                {
                     std::cout << "Index: " << i << ". Generated Value: " << m_pfHSteeringCoeffs[i] << ". Correct Value: " << fCorrectCoeffs[i] << std::endl;
-                    //if(temp++ == 100){
-                        m_iResult = -1;
-                        free(fCorrectCoeffs);
-                        return;
-                    //}
+                    m_iResult = -1;
+                    free(fCorrectCoeffs);
+                    return;
                 }
             }
-
             free(fCorrectCoeffs);
             m_iResult = 1;
         }
@@ -353,7 +371,6 @@ void BeamformerCoeffTest::verify_output()
             float * pfCorrectBeams = (float*)malloc(m_ulSizeOutputBeamData);
             float * pfGeneratedBeams = m_pfHOutputBeams;
 
-            //std::cout << "*****" << static_cast<float>(pfGeneratedBeams[0]) << "******" << std::endl;
             for (size_t c = 0; c < NR_CHANNELS; c++)
             {
                 for (size_t t_ex = 0; t_ex < NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES; t_ex++)
@@ -368,7 +385,7 @@ void BeamformerCoeffTest::verify_output()
                             float fBeamSumImag = 0;
                             for (size_t a = 0; a < NR_STATIONS; a++)
                             {
-                                size_t ulCoeffIndex =  COMPLEXITY*((t_ex*INTERNAL_TIME_SAMPLES+t_in)*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + b*NR_STATIONS + a);
+                                size_t ulCoeffIndex =  COMPLEXITY*((t_ex*INTERNAL_TIME_SAMPLES + t_in)*NR_CHANNELS*NR_STATIONS*NR_BEAMS+c*NR_STATIONS*NR_BEAMS + b*NR_STATIONS + a);
                                 size_t ulAntSampleIndex = COMPLEXITY*(c*NR_SAMPLES_PER_CHANNEL*NR_STATIONS + t_ex*NR_STATIONS*INTERNAL_TIME_SAMPLES + a*INTERNAL_TIME_SAMPLES + t_in);
                                 //size_t ulSampleIndex = 
                                 float fRealSteeringCoeff = fCorrectCoeffs[ulCoeffIndex];
@@ -377,20 +394,16 @@ void BeamformerCoeffTest::verify_output()
                                 int8_t iImagAntSample = pi8InAntData[ulAntSampleIndex+1];
                                 fBeamSumReal+=fRealSteeringCoeff*iRealAntSample;
                                 fBeamSumImag+=fImagSteeringCoeff*iImagAntSample;
-                                //if(a < 16 && t_ex == 1){
-                                //    struct delay_vals sDelayValuesLocal = m_pHDelayValues[b*NR_STATIONS + a];
-                                //    std::cout << " Ant: " << a << " CoeffIndex: " << ulCoeffIndex << " Real: " << fRealSteeringCoeff << " Imag: " << fImagSteeringCoeff << ", Ant Val real:" << static_cast<int32_t>(iRealAntSample) << ", Ant Val Imag:" << static_cast<int32_t>(iImagAntSample) <<"\n\t Delay Vals: "<< sDelayValuesLocal.fDelay_s*1000000 << " " << sDelayValuesLocal.fDelayRate_sps*1000000 << " " << sDelayValuesLocal.fPhase_rad*1000000 << " " << sDelayValuesLocal.fPhaseRate_radps*1000000 << "\n\tSample*BW Real "<< fRealSteeringCoeff*iRealAntSample <<" Imag "<< fImagSteeringCoeff*iImagAntSample << std::endl;
-                                //}
                             }
-                            if(std::fabs(fBeamSumReal-pfGeneratedBeams[COMPLEXITY*iBeamIndex]) > m_fFloatingPointTolerance || std::fabs(fBeamSumImag-pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) > m_fFloatingPointTolerance)
+                            if(std::fabs(fBeamSumReal - pfGeneratedBeams[COMPLEXITY*iBeamIndex]) > m_fFloatingPointTolerance || std::fabs(fBeamSumImag - pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) > m_fFloatingPointTolerance)
                             {
                                 m_iResult = -1;
                                 std::cout << "Error Detected:" << std::endl;
                                 std::cout << "\tReal value: " << fBeamSumReal << ". Imag value: " << fBeamSumImag << std::endl;
-                                std::cout << "\tReal diff: " << std::fabs(fBeamSumReal-pfGeneratedBeams[COMPLEXITY*iBeamIndex]) << ". Imag diff: " << std::fabs(fBeamSumImag-pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) << ". Tolerance: "<< m_fFloatingPointTolerance << std::endl;
+                                std::cout << "\tReal diff: " << std::fabs(fBeamSumReal - pfGeneratedBeams[COMPLEXITY*iBeamIndex]) << ". Imag diff: " << std::fabs(fBeamSumImag-pfGeneratedBeams[COMPLEXITY*iBeamIndex+1]) << ". Tolerance: "<< m_fFloatingPointTolerance << std::endl;
                                 std::cout << "\tIndices b:" << b << ", t_in: " << t_in << ", t_ex: " << t_ex << ", c: " << c << ". Combined Index:" << iBeamIndex << std::endl;
                                 std::cout << "\tReal: Simulated " << fBeamSumReal << " Generated " << pfGeneratedBeams[COMPLEXITY*iBeamIndex] << std::endl;
-                                std::cout << "\tImag: Simulated " << fBeamSumImag << " Generated " << pfGeneratedBeams[COMPLEXITY*iBeamIndex+1] << std::endl;
+                                std::cout << "\tImag: Simulated " << fBeamSumImag << " Generated " << pfGeneratedBeams[COMPLEXITY*iBeamIndex + 1] << std::endl;
                                 free(pfCorrectBeams);
                                 return;
                             }
@@ -410,10 +423,12 @@ void BeamformerCoeffTest::verify_output()
     
 }
 
-float BeamformerCoeffTest::get_time(){
-    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL){
+float BeamformerCoeffTest::get_time()
+{
+    if(m_eKernelOption != COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL)
+    {
         float fRateOfFFTs_Hz = ((float)ADC_SAMPLE_RATE)/((float)FFT_SIZE);
-        float fInputPacketSizePerFFT_Bits = ((float)FFT_SIZE/2.0)/((float) NR_STATIONS) * NR_POLARIZATIONS * 2 * 8 * NR_STATIONS;//8 for converting from bytes to bits and 2 for the complex samples
+        float fInputPacketSizePerFFT_Bits = ((float)FFT_SIZE/2.0)/((float) NR_STATIONS) * NR_POLARIZATIONS * COMPLEXITY * 8 * NR_STATIONS;//8 for converting from bytes to bits
         float fTransferTimePerPacket_s = 1/fRateOfFFTs_Hz;
         m_fGpuUtilisation_SingleTimeUnit = (m_fKernelElapsedTime_ms/1000.0)/(NR_SAMPLES_PER_CHANNEL*fTransferTimePerPacket_s);
         m_fGpuUtilisation_MultipleTimeUnits = m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS);
@@ -427,9 +442,9 @@ float BeamformerCoeffTest::get_time(){
         
         for (size_t i = 1; i < 4; i+=2)
         {
-            std::cout << "With an X-Engine Ingest rate of " << fRateOfFFTs_Hz*fInputPacketSizePerFFT_Bits/1e9f*(i+1) << " Gbps (" <<(i+1)<<" MeerKAT Polarisations)."<< std::endl;
-            std::cout << "\tGPUs required with a 1:1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit*(i+1) << std::endl;
-            std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i+1) << std::endl;
+            std::cout << "With an X-Engine Ingest rate of " << fRateOfFFTs_Hz*fInputPacketSizePerFFT_Bits/1e9f*(i+1) << " Gbps (" <<(i + 1)<<" MeerKAT Polarisations)."<< std::endl;
+            std::cout << "\tGPUs required with a 1:1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit*(i + 1) << std::endl;
+            std::cout << "\tGPUs required with a "<<ACCUMULATIONS_BEFORE_NEW_COEFFS<<":1 ratio of steering coefficients to input data: " << m_fGpuUtilisation_SingleTimeUnit/((float)ACCUMULATIONS_BEFORE_NEW_COEFFS)*(i + 1) << std::endl;
             std::cout << std::endl;
         }
 
@@ -442,10 +457,12 @@ float BeamformerCoeffTest::get_time(){
     return UnitTest::get_time();
 }
 
-float BeamformerCoeffTest::get_gpu_utilisation_per_single_time_unit(){
+float BeamformerCoeffTest::get_gpu_utilisation_per_single_time_unit()
+{
     return m_fGpuUtilisation_SingleTimeUnit;
 }
 
-float BeamformerCoeffTest::get_gpu_utilisation_per_multiple_time_units(){
+float BeamformerCoeffTest::get_gpu_utilisation_per_multiple_time_units()
+{
     return m_fGpuUtilisation_MultipleTimeUnits;
 }
