@@ -16,7 +16,8 @@ int main()
         oBeamformerCoeffTest.run_test();
         oBeamformerCoeffTest.get_time();
         int iResult = oBeamformerCoeffTest.get_result();
-        if(iResult!=1){
+        if(iResult!=1)
+        {
             std::cout << "Test failed, output data not generated correctly" << std::endl; 
             return 1;
         }
@@ -30,7 +31,8 @@ int main()
         oBeamformerCoeffTest.run_test();
         oBeamformerCoeffTest.get_time();
         int iResult = oBeamformerCoeffTest.get_result();
-        if(iResult!=1){
+        if(iResult!=1)
+        {
             std::cout << "Test failed, output data not generated correctly" << std::endl; 
             return 1;
         }
@@ -45,7 +47,8 @@ int main()
         oBeamformerCoeffTest.run_test();
 
         int iResult = oBeamformerCoeffTest.get_result();
-        if(iResult!=1){
+        if(iResult!=1)
+        {
             std::cout << "Test failed, output data not generated correctly" << std::endl; 
             return 1;
         }
@@ -59,7 +62,8 @@ int main()
         oBeamformerCoeffTest.run_test();
         
         int iResult = oBeamformerCoeffTest.get_result();
-        if(iResult!=1){
+        if(iResult!=1)
+        {
             std::cout << "Test failed, output data not generated correctly" << std::endl; 
             return 1;
         }

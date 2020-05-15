@@ -58,8 +58,8 @@ BeamformerCoeffTest::BeamformerCoeffTest(float fFloatingPointTolerance,
     //Generate a single reference time on initialisation
     struct timespec m_sReferenceTime_ns;
     clock_gettime(CLOCK_MONOTONIC, &m_sReferenceTime_ns);
-     #define TIME_SHIFT  50000
-     //Not quite sure what this is here for - copy of a copy of a copy
+    #define TIME_SHIFT  50000
+    //Not quite sure what this is here for - copy of a copy of a copy
     if (m_sReferenceTime_ns.tv_nsec >= TIME_SHIFT)
         m_sReferenceTime_ns.tv_nsec -= TIME_SHIFT;
     else
@@ -115,10 +115,10 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
         //Refer to corresponding kernel functions for explanations as to how these blocks are generated
         case BeamformerCoeffTest::SteeringCoefficientKernel::NAIVE :
         {
-            size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
-            size_t ulNumBlocksPerChannel = ulNumSamplesPerChannel/NUM_THREADS_PER_BLOCK;
+            size_t ulNumAntBeamCombinations = NR_STATIONS*NR_BEAMS;
+            size_t ulNumBlocksPerChannel = ulNumAntBeamCombinations/NUM_THREADS_PER_BLOCK;
             size_t ulNumThreadsPerBlock = 0;
-            if(ulNumSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0)
+            if(ulNumAntBeamCombinations%NUM_THREADS_PER_BLOCK != 0)
             {
                 ulNumBlocksPerChannel++;
             }
@@ -128,7 +128,7 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
             }
             else
             {
-                ulNumThreadsPerBlock = ulNumSamplesPerChannel;
+                ulNumThreadsPerBlock = ulNumAntBeamCombinations;
             }
             m_cudaGridSize = dim3(ulNumBlocksPerChannel, NR_CHANNELS);
             m_cudaBlockSize = dim3(ulNumThreadsPerBlock);
@@ -137,10 +137,10 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS :
         {
-            int numSamplesPerChannel = NR_STATIONS*NR_BEAMS;
-            int numBlocksPerChannel = numSamplesPerChannel/NUM_THREADS_PER_BLOCK;
+            int ulNumAntBeamCombinations = NR_STATIONS*NR_BEAMS;
+            int numBlocksPerChannel = ulNumAntBeamCombinations/NUM_THREADS_PER_BLOCK;
             int threadsPerBlock = 0;
-            if(numSamplesPerChannel%NUM_THREADS_PER_BLOCK != 0)
+            if(ulNumAntBeamCombinations%NUM_THREADS_PER_BLOCK != 0)
             {
                 numBlocksPerChannel++;
             }
@@ -149,7 +149,7 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
                 threadsPerBlock = NUM_THREADS_PER_BLOCK;
             }else
             {
-                threadsPerBlock = numSamplesPerChannel;
+                threadsPerBlock = ulNumAntBeamCombinations;
             }
             int gridSizeChannels = NR_CHANNELS/NUM_CHANNELS_PER_KERNEL;
             if(NR_CHANNELS % NUM_CHANNELS_PER_KERNEL != 0)
@@ -163,18 +163,14 @@ void BeamformerCoeffTest::generate_GPU_kernel_dimensions()
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::MULTIPLE_CHANNELS_AND_TIMESTAMPS :
         {
-            size_t ulNumSamplesPerChannel = NR_STATIONS*NR_BEAMS;
-            size_t ulNumBlocks = ulNumSamplesPerChannel/NUM_ANTBEAMS_PER_BLOCK;
-            if(ulNumSamplesPerChannel%NUM_ANTBEAMS_PER_BLOCK != 0)
+            size_t ulNumAntBeamCombinations = NR_STATIONS*NR_BEAMS;
+            size_t ulNumBlocks = ulNumAntBeamCombinations/NUM_ANTBEAMS_PER_BLOCK;
+            if(ulNumAntBeamCombinations%NUM_ANTBEAMS_PER_BLOCK != 0)
             {
                 ulNumBlocks++;
             }
             m_cudaGridSize = dim3(ulNumBlocks);//dim3(7,1);//
             m_cudaBlockSize = dim3(NUM_THREADS_PER_BLOCK_MAX);
-            //std::cout << "Blocks: " << ulNumBlocks << std::endl;
-            //std::cout << "Ants: " << NR_STATIONS << std::endl;
-            //std::cout << "Beams: " << NR_BEAMS << std::endl;
-            //std::cout << "Ants x Beams: " << NR_STATIONS*NR_BEAMS << std::endl;
         }
 
         case BeamformerCoeffTest::SteeringCoefficientKernel::COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL :
