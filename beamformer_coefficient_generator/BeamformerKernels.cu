@@ -36,10 +36,10 @@ __global__ void calculate_beamweights_naive(
         float fSteeringCoeffCorrectReal;
         float fSteeringCoeffCorrectImag;
 
-        /** Fancy cuda function to combine cosf and sinf into a single operation
+        /** cuda function to combine cosf and sinf into a single operation
          *  The __ means that a faster less precise lookup is being performed, 
-         * we will eventually need to determin if this is accurate enough for 
-         * our purposes
+         *  we will eventually need to determin if this is accurate enough for 
+         *  our purposes
          */
         __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
         
@@ -63,12 +63,9 @@ __global__ void calculate_beamweights_grouped_channels(
     int iInterChannelIndex = blockIdx.x*blockDim.x + threadIdx.x;
     if(iInterChannelIndex < NR_BEAMS*NR_STATIONS)
     {
+        //***** Calculate all relevant indexes *****
         int iAntIndex = iInterChannelIndex/NR_BEAMS;
         int iBeamIndex = iInterChannelIndex - iAntIndex * NR_BEAMS;
-
-        //Calculate Values
-        struct delay_vals sDelayValuesLocal = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
-
         //Calculate which channels to iterate through
         int iChannelBlockIndex = blockIdx.y;
         int iChannelStartIndex = iChannelBlockIndex*NUM_CHANNELS_PER_KERNEL;
@@ -78,6 +75,10 @@ __global__ void calculate_beamweights_grouped_channels(
             iChannelStopIndex = NR_CHANNELS;
         }
 
+        //***** Load delay values from global memory
+        struct delay_vals sDelayValuesLocal = psDelayVals[iAntIndex*NR_BEAMS + iBeamIndex];
+
+        //***** Calculate all steering coefficients for each channel of a single antenna pair.
         //TODO: Add logic to detect if nanoseconds go above 999999999 and increments seconds by 1
         float fDeltaTime = sCurrentTime.tv_sec - sRefTime.tv_sec;
         long fNanosecondsTimeDifference = sCurrentTime.tv_nsec - sRefTime.tv_nsec;
@@ -99,6 +100,8 @@ __global__ void calculate_beamweights_grouped_channels(
             sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
             ulOutputIndex = (iChannelIndex*NR_STATIONS*NR_BEAMS + iInterChannelIndex);
             
+            //***** Store calculated values back into global memory *****
+            //Casts to 16 bit if this is necessary.
             if(!b16BitOutput)
             {
                 ulOutputIndex*=2;
@@ -124,10 +127,11 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     //Calculate Relevant Indices
     int iBeamAntIndex = blockIdx.x*NUM_ANTBEAMS_PER_BLOCK + threadIdx.x % NUM_ANTBEAMS_PER_BLOCK;
     
-    //Create shared memory arrays
+    //Create shared memory array to store a subset of the delay values
     __shared__ struct delay_vals psSDelayVals[NUM_ANTBEAMS_PER_BLOCK];
     
-    //More efficient to load psDelayVals at four bytes per thread instead of 16 
+    //***** Read delay values from global memory into shared memory *****
+    //More efficient to load psDelayVals as four bytes per thread instead of 16 
     //bytes per thread, this is why the array is cast to int32_t.
     if(threadIdx.x<NUM_ANTBEAMS_PER_BLOCK*4)
     {
@@ -136,12 +140,13 @@ __global__ void calculate_beamweights_grouped_channels_and_timestamps(
     }
 
     __syncthreads();
-    //Calculate Steering Coefficients
+    //***** Calculate Steering Coefficients *****
     if(iBeamAntIndex < NR_BEAMS*NR_STATIONS)
     {
         struct delay_vals sDelayValuesLocal = psSDelayVals[threadIdx.x % NUM_ANTBEAMS_PER_BLOCK];
-        //Each block is divided into seperate discrete chunks.
-        const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/(NUM_ANTBEAMS_PER_BLOCK*2);//This multiply by two is here to increase the width of a single time chunk. This will better coalesce the writing of data to the pfCplxSteeringCoeffs. After some tweaking, 2 works best for 32-bit floating point outputs and 1 for 16-bit floating point outputs. When this is changed, the multiply by two in iTimeChunk two lines down must also be changed 
+        // Each thread geenerates a subset of steering coefficients time samples for a single delay value
+        // Multiple threads together generate all the steering coefficients per time sample 
+        const int iTotalTimeChunksPerKernel = NUM_THREADS_PER_BLOCK_MAX/(NUM_ANTBEAMS_PER_BLOCK*2);//This multiply by two is here to increase the width of a single time chunk. This will better coalesce the writing of data to the pfCplxSteeringCoeffs. After some tweaking, 2 works best for 32-bit floating point outputs and 1 for 16-bit floating point outputs. When this is changed, the multiply by two in iTimeChunk two lines down must also be changed. There is probably a better way to do this but I have not put much thought into it.
         const int iTimeIterations = NR_SAMPLES_PER_CHANNEL/iTotalTimeChunksPerKernel;
         int iTimeChunk = threadIdx.x / (NUM_ANTBEAMS_PER_BLOCK*2);
         #pragma unroll
@@ -233,7 +238,10 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     //***** Beamform the data *****
     /** Each sequential set of 64 threads calculates a single beam. All 1024 
      *  threads are used to calculate 16 beams - this code will need to be 
-     *  modified for changing numbers of beams/antennas
+     *  modified for changing numbers of beams/antennas. 
+     * 
+     *  This means that each thread will be allocated a single delay value 
+     *  struct.
      */
     struct delay_vals sDelayValuesLocal = psDelayValsShared[threadIdx.x];
 
@@ -242,12 +250,13 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     int iChannelOffsetIn_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)/sizeof(int32_t)*blockIdx.x;
     int iChannelOffsetOut_32bitWords = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)/sizeof(int32_t)*blockIdx.x;
     
-    //***** Perform Beamforming *****
     #pragma unroll
     for (int j = 0; j < NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES; j++)
     {
         int iTimeOffset_32bitWords = iNumTransfersIn_32BitWords*j;
         //***** Copy a portion of the input antenna data into shared memory *****
+        // A single set of [NR_STATIONS][INTERNAL_TIME_SAMPLES] is loaded into 
+        // shared mempry per iteration of this outer loop
         if(iThreadIndex < iNumTransfersIn_32BitWords){
             int iGlobalMemoryIndex = iThreadIndex + iTimeOffset_32bitWords + iChannelOffsetIn_32bitWords;
             int iSharedMemoryIndex = threadIdx.x;
@@ -260,6 +269,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
         int iBeamIndex = iThreadIndex/NR_STATIONS;
         int iAntIndex = iThreadIndex - iBeamIndex * NR_STATIONS;
 
+        //This inner loop performs beamforing for each INTERNAL_TIME_SAMPLE
         #pragma unroll
         for (int i = 0; i < INTERNAL_TIME_SAMPLES; i++)
         {

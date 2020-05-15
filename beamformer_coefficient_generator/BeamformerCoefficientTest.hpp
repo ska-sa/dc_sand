@@ -13,7 +13,7 @@ class BeamformerCoeffTest : public UnitTest
         /** \brief      Used to specify the GPU kernel that will generate the steering coefficients 
          * 
          *  \details    This enum is used on initialisation of the BeamformerCoeffTest object. It allows the 
-         *              user to determine what kernel implementation of the beamformer to use. This is ueful
+         *              user to specify what kernel implementation of the beamformer to use. This is ueful
          *              for testing purposes.
          */
         enum SteeringCoefficientKernel
@@ -24,6 +24,13 @@ class BeamformerCoeffTest : public UnitTest
             COMBINED_COEFF_GEN_AND_BEAMFORMER_SINGLE_CHANNEL
         };
 
+        /** \brief      Used to specify the output format of the generated steering coefficients 
+         * 
+         *  \details    This enum is used on initialisation of the BeamformerCoeffTest object. It allows the user to 
+         *              specify what output format the steering coefficients must be set to. The user can set this to 
+         *              either 16 or 32 bit floating point numbers. All kernels support 32 bit outputs, not all of them
+         *              support 16 bit outputs.
+         */
         enum SteeringCoefficientBitWidth
         {
             b16,
@@ -38,12 +45,24 @@ class BeamformerCoeffTest : public UnitTest
          *  \details    This function is overriden  as the steering coefficients are transferred to the GPU at a very slow rate.
          *              This means that the simple compute_time/pcie_transfer time calculation wont produce anything useful.
          *              This functiona also reports the GPU utilisation for an increasing number of MeerKAT pols. This is useful 
-         *              for mapping number of antennas to the number of GPUs. 
+         *              for mapping number of antennas to the number of GPUs. This function is accurate for the 64 antenna
+         *              case, it has not been verified for different array sizes.
          */ 
         float get_time() override;
 
+        /**
+         * The overridden \ref get_time() method generates a number indicating how much of the GPU is used when 
+         * streaming. This method assumes the kernel runs for every timestamp. A value between 0 and 1 means only a 
+         * portion of the GPU is required. Values greater than 1 indicate more than one GPU is required.
+         */ 
         float get_gpu_utilisation_per_single_time_unit();
 
+        /**
+         * The overridden \ref get_time() method generates a number indicating how much of the GPU is used. This method 
+         * returns that value assuming the kernel accumulates over ACCUMULATIONS_BEFORE_NEW_COEFFS timestamps without 
+         * generating any new coefficients. A value between 0 and 1 means only a portion of the GPU is required. Values 
+         * greater than 1 indicate more than one GPU is required.
+         */ 
         float get_gpu_utilisation_per_multiple_time_units();
 
     protected:

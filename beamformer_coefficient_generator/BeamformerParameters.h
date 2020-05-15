@@ -3,12 +3,12 @@
 
 #define COMPLEXITY 2 //Used to improve readability
 
-//These parameters shape the 
+//These parameters define the input shape of the received data
 #define NR_CHANNELS 64 //512 //Number of frequency channels
 #define NR_POLARIZATIONS 1 // Just one for now, but I would eventually like to generalise it.
 #define NR_SAMPLES_PER_CHANNEL 256 //Number of time samples per channel. Must be a multiple of 64
-#define NR_STATIONS 64 //NUmber of antennas
-#define NR_BEAMS 16
+#define NR_STATIONS 64 //Number of antennas
+#define NR_BEAMS 16 //Number of beams
 
 //Values used to calculate delays
 #define SAMPLING_PERIOD 1e-7f
@@ -31,7 +31,8 @@
 //Used for the calculate_beamweights_grouped_channels_and_timestamps kernel
 /**
  * For the calculate_beamweights_grouped_channels_and_timestamps kernel, each 
- * block only operates on a subset of 
+ * block only operates on a subset of the antenna beams. This value determines 
+ * the size of the subset
  */
 #define NUM_ANTBEAMS_PER_BLOCK 16 //Must be a power of 2
 
