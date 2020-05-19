@@ -250,18 +250,38 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
     int iChannelOffsetIn_32bitWords = NR_STATIONS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(int8_t)/sizeof(int32_t)*blockIdx.x;
     int iChannelOffsetOut_32bitWords = NR_BEAMS*NR_SAMPLES_PER_CHANNEL*COMPLEXITY*sizeof(float)/sizeof(int32_t)*blockIdx.x;
     
+    //These two lines can be commented out if prefetching is not used.
+    int iGlobalMemoryIndex = iThreadIndex + iChannelOffsetIn_32bitWords;
+    uint32_t u32PrefetchedAntData = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+
     #pragma unroll
     for (int j = 0; j < NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES; j++)
     {
-        int iTimeOffset_32bitWords = iNumTransfersIn_32BitWords*j;
         //***** Copy a portion of the input antenna data into shared memory *****
         // A single set of [NR_STATIONS][INTERNAL_TIME_SAMPLES] is loaded into 
         // shared mempry per iteration of this outer loop
         if(iThreadIndex < iNumTransfersIn_32BitWords){
-            int iGlobalMemoryIndex = iThreadIndex + iTimeOffset_32bitWords + iChannelOffsetIn_32bitWords;
             int iSharedMemoryIndex = threadIdx.x;
-            ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+            //The next three lines implement a non-prefeteched memory read - they are commented out for now
+            //int iTimeOffset_32bitWords = iNumTransfersIn_32BitWords*j;
+            //iGlobalMemoryIndex = iThreadIndex + iTimeOffset_32bitWords + iChannelOffsetIn_32bitWords;
+            //((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+
+            /** The next six lines implement a prefetched memory read - i did not detect any performance improvements 
+             *  testing this on the Nvidia 1080, but maybe it will make things faster on different cards.
+             */
+            ((uint32_t*)pi8AntennaDataInShared)[iSharedMemoryIndex] = u32PrefetchedAntData;
+            if(j != NR_SAMPLES_PER_CHANNEL/INTERNAL_TIME_SAMPLES-1){
+                int iTimeOffset_32bitWords = iNumTransfersIn_32BitWords*(j+1);
+                iGlobalMemoryIndex = iThreadIndex + iTimeOffset_32bitWords + iChannelOffsetIn_32bitWords;
+                uint32_t u32PrefetchedAntData = ((uint32_t*)pi8AntennaData)[iGlobalMemoryIndex];
+            }
         }
+        /** This __syncthreads() is here as the reading from global memory 
+         *  does necessarily follow the same thread indexing convention as 
+         *  generating the steering coeffs - this is done to ensure global 
+         *  memory reads are properly coalesced.
+         */
         __syncthreads();
 
         //These values are used for determining the antenna sample index 
@@ -290,7 +310,7 @@ __global__ void calculate_beamweights_and_beamform_single_channel(
             float fSteeringCoeffCorrectReal;
             float fSteeringCoeffCorrectImag;
             __sincosf(fRotation,&fSteeringCoeffCorrectImag,&fSteeringCoeffCorrectReal);
-
+            
             //***** Multiply Antenna Sample by steering coefficient *****
             float fTempOutReal = fSteeringCoeffCorrectReal * ((float)i8AntValueReal); 
             float fTempOutImag = fSteeringCoeffCorrectImag * ((float)i8AntValueImag); 
