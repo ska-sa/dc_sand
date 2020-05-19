@@ -25,6 +25,8 @@ module = SourceModule(open("vector_add.cu").read())
 vector_add_kernel = module.get_function("kernel_vector_add")
 
 print(f"Populating host input vectors with random data with an amplitude of {volume_knob}...")
+# We're using the [:] here so that the interpreter just updates the values within the numpy ndarray, rather
+# than clobbering the specially-prepared pagelocked memory with a new ndarray.
 A_host[:] = volume_knob*np.random.randn(vector_length)
 B_host[:] = volume_knob*np.random.randn(vector_length)
 
