@@ -2,19 +2,7 @@
 #include <mma.h>
 
 extern "C" {
-
-__global__ void do_something(__half a[10])
-{
-    printf("A's value is %f \n", (float) a[0]);
-    a[0] *= a[1];
-    printf("A's value is %f \n", (float) a[0]);
-}
-
-/*__global__ void do_nothing()
-{
-    printf("Nothing done here.\n");
-}*/
-
+    
 __global__ void simple_tc(__half A[TCM_SIZE][TCM_SIZE], __half B[TCM_SIZE][TCM_SIZE], float C[TCM_SIZE][TCM_SIZE])
 {
     using namespace nvcuda::wmma;
