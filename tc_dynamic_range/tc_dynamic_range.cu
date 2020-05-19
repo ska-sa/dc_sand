@@ -1,7 +1,7 @@
 #include <cuda_fp16.h>
 #include <mma.h>
 
-extern "C" {
+extern "C" {  //See the .py file for an explanation of why this is necessary.
     
 __global__ void simple_tc_matmul(__half A[TCM_SIZE][TCM_SIZE], __half B[TCM_SIZE][TCM_SIZE], float C[TCM_SIZE][TCM_SIZE])
 {
