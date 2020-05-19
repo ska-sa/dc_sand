@@ -28,7 +28,7 @@ module = SourceModule(open("tc_dynamic_range.cu").read(),
                       include_dirs=["/usr/local/cuda/include",],
                       no_extern_c=True )
 #get the kernel from the module
-simple_tc = module.get_function("simple_tc")
+simple_tc_matmul_kernel = module.get_function("simple_tc_matmul")
 
 # Set up the A matrix. Currently, it is mostly zeros.
 a = np.zeros((tcm_size, tcm_size), dtype=np.float16)
@@ -65,7 +65,7 @@ c_pin = cuda.register_host_memory(c)
 c_gpu = cuda.mem_alloc(c_pin.nbytes)
 
 # We launch the kernel with 32 threads because to do tensor-core multiplication we need an entire warp.
-simple_tc(a_gpu, b_gpu, c_gpu, block=(32,1,1), grid=(1,1,1))
+simple_tc_matmul_kernel(a_gpu, b_gpu, c_gpu, block=(32,1,1), grid=(1,1,1))
 
 cuda.memcpy_dtoh(c_pin, c_gpu)
 context.synchronize()
