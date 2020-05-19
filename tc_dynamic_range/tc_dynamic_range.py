@@ -50,7 +50,7 @@ cuda.memcpy_htod(b_device, b_host)
 print("B:")
 print_mat(b_host)
 
-c_host = cuda.pagelocked_zeros((tcm_size, tcm_size), dtype=np.float32)
+c_host = cuda.pagelocked_empty((tcm_size, tcm_size), dtype=np.float32)
 c_device = cuda.mem_alloc(c_host.nbytes)
 
 # We launch the kernel with 32 threads because to do tensor-core multiplication we need an entire warp.

@@ -4,42 +4,49 @@ import pycuda.autoinit
 from pycuda.compiler import SourceModule
 import numpy as np
 
-vector_length = np.uint64(200000000)
+# A big number. Just be careful not to overload the GPU.
+vector_length = 200000000
 block_size = 128
-
-
 volume_knob = 256
-A = volume_knob*np.random.randn(vector_length)
-A = A.astype(np.float32)
-A_pin = cuda.register_host_memory(A)  # There are actually several ways to do this. Must look into this.
-A_gpu = cuda.mem_alloc(A_pin.nbytes)
 
-B = volume_knob*np.random.randn(vector_length)
-B = B.astype(np.float32)
-B_pin = cuda.register_host_memory(B)
-B_gpu = cuda.mem_alloc(B_pin.nbytes)
+# I'm using print() statements instead of comments here so that you can see what's happening when you run the script. It can take quite a while to finish...
+print(f"Setting up memory on host and device for A, B (input) and C (output) vectors - {vector_length} elements in length...")
+A_host = cuda.pagelocked_empty(int(vector_length), dtype=np.float32)
+A_device = cuda.mem_alloc(A_host.nbytes)
 
-C = np.empty(vector_length, dtype=np.float32)
-C_pin = cuda.register_host_memory(C)
-C_gpu = cuda.mem_alloc(C_pin.nbytes)
+B_host = cuda.pagelocked_empty(int(vector_length), dtype=np.float32)
+B_device = cuda.mem_alloc(B_host.nbytes)
 
+C_host = cuda.pagelocked_empty(int(vector_length), dtype=np.float32)
+C_device = cuda.mem_alloc(C_host.nbytes)
+
+print("Reading source file and JIT-compiling kernel...")
 module = SourceModule(open("vector_add.cu").read())
-vector_add = module.get_function("kernel_vector_add")
+vector_add_kernel = module.get_function("kernel_vector_add")
 
-cuda.memcpy_htod(A_gpu, A_pin)
-cuda.memcpy_htod(B_gpu, B_pin)
+print(f"Populating host input vectors with random data with an amplitude of {volume_knob}...")
+A_host[:] = volume_knob*np.random.randn(vector_length)
+B_host[:] = volume_knob*np.random.randn(vector_length)
 
+print("Copying input data to device...")
+cuda.memcpy_htod(A_device, A_host)
+cuda.memcpy_htod(B_device, B_host)
+
+# Calculate number of blocks
 n_blocks = int(vector_length) // int(block_size) + 1
 
-vector_add(A_gpu, B_gpu, C_gpu, vector_length,
-            block=(block_size, 1, 1),
-            grid=(n_blocks, 1, 1))
+print("Executing kernel...")
+vector_add_kernel(A_device, B_device, C_device, np.uint64(vector_length), # You can't pass a kernel a normal python int as an argument, it needs to be a numpy dtype.
+            block=(block_size, 1, 1), # CUDA block and grid sizes can be 3-dimensional,
+            grid=(n_blocks, 1, 1))    # but we're just using a 1D vector here.
 
-cuda.memcpy_dtoh(C_pin, C_gpu)
+print("Copying output data back to the host...")
+cuda.memcpy_dtoh(C_host, C_device)
 
-for i, (a, b, c) in enumerate(zip(A, B, C)):
+print(f"Host-side verification. It may take some time to check {vector_length} addtions...")
+for i, (a, b, c) in enumerate(zip(A_host, B_host, C_host)):
     if c != a + b:
-        print("Vector element {} not correct! Got {}, expected {}.".format(i, a + b, c))
+        print(f"Vector element {i} not correct! Got { a + b,}, expected {c}.")
         break
 else:
-    print("Vector-add of {} {} elements completed successfully.".format(vector_length, C.dtype))
+    print(f"Vector-add of {vector_length} {C_host.dtype} elements completed successfully!")
