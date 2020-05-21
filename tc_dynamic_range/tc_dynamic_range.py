@@ -11,19 +11,21 @@ import numpy as np
 
 # TCM stands for "Tensor-core multiplier."
 tcm_size = 16
+num1 = 65000
+num2 = 1.5e-5
 
-def print_mat(matrix):
+def print_mat(matrix, print_range=3):
     """A quickly-and-dirty function to show me an entire 16x16 matrix."""
     # This little section prints 0 - 15 aligned with the columns of numbers to easily guide the eye.
     title_string = f"{'': >3}" # Python f-strings are a thing. Look them up they're probably the most sensible way to print things.
-    for x in range(tcm_size):
+    for x in range(print_range):
         title_string += f"{x: >12}" # The >12 means right-align the number in a field 12 spaces wide.
     print(title_string)
     # The rest of the function just prints out the matrix
-    for i in range(tcm_size):
+    for i in range(print_range):
         output_string = ""
-        for j in range(tcm_size):
-            output_string += f"{matrix[i,j]:10.5f}"
+        for j in range(print_range):
+            output_string += f"{matrix[i,j]:10.7f}"
             output_string += "  "
         # with row-labels for easy reading.
         print(f"{i: >3}: {output_string}")
@@ -45,8 +47,8 @@ simple_tc_matmul_kernel = module.get_function("simple_tc_matmul") # This looks f
 # Set up the A matrix. Currently, it is mostly zeros.
 a_host = cuda.pagelocked_zeros((tcm_size, tcm_size), dtype=np.float16)
 # Manually insert some test data.
-a_host[0,0] = 10
-a_host[0,2] = 0.125
+a_host[0,0] = np.float16(num1)
+#a_host[0,2] = np.float16(num2)
 a_device = cuda.mem_alloc(a_host.nbytes)
 cuda.memcpy_htod(a_device, a_host)
 
@@ -56,8 +58,8 @@ print_mat(a_host)
 # B will be mostly zeros.
 b_host = cuda.pagelocked_zeros((tcm_size, tcm_size), dtype=np.float16)
 # Manually insert some test data.
-b_host[0,0] = 1
-b_host[2,0] = 0.125
+b_host[0,0] = np.float16(num2)
+#b_host[2,0] = np.float16(num1)
 b_device = cuda.mem_alloc(a_host.nbytes)
 cuda.memcpy_htod(b_device, b_host)
 
