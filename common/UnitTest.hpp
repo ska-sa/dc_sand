@@ -23,7 +23,7 @@ class UnitTest
         /// Retrieve the test result.
         int   get_result();
         /// Retrieve the amount of time that the test took.
-        float get_time();
+        virtual float get_time();
     
     protected:
         /// The constructor is protected as a reminder that we can't instantiate a pure virtual class directly.
@@ -47,20 +47,22 @@ class UnitTest
         /// Stores the result of the test.
         int   m_iResult;
 
+        /// Time duration (ms) of the kernel execution.
+        float m_fKernelElapsedTime_ms;
+        
+        /// Time duration (ms) of the HtoD memory transfer.
+        float m_fHtoDElapsedTime_ms;
+
     private:
         /// Timing for the start of the HtoD memory transfer.
         cudaEvent_t m_eventHtoDStart;
         /// Timing for the finish of the HtoD memory transfer.
         cudaEvent_t m_eventHtoDFinish;
-        /// Time duration (ms) of the HtoD memory transfer.
-        float m_fHtoDElapsedTime_ms;
 
         /// Timing for the start of the kernel execution.
         cudaEvent_t m_eventKernelStart;
         /// Timing for the finish of the kernel execution.
         cudaEvent_t m_eventKernelFinish;
-        /// Time duration (ms) of the kernel execution.
-        float m_fKernelElapsedTime_ms;
 
         /// Timing for the start of the DtoH memory transfer.
         cudaEvent_t m_eventDtoHStart;
