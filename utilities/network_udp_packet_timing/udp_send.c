@@ -4,14 +4,15 @@
 #include <stdlib.h> 
 #include <unistd.h> 
 #include <string.h> 
-#include <sys/types.h> 
-#include <sys/socket.h> 
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-  
-#define PORT            8080 
+#include <sys/types.h>  //For networking
+#include <sys/socket.h> //For networking
+#include <arpa/inet.h>  //For networking
+#include <netinet/in.h>  //For networking
+
+#include "network_packets.h"
+
 #define MAXLINE         1024 
-#define SERVER_ADDRESS  0x7f000001
+#define SERVER_ADDRESS  "127.0.0.1"
   
 // Driver code 
 int main() { 
@@ -19,6 +20,13 @@ int main() {
     char buffer[MAXLINE]; 
     char *hello = "Hello from client"; 
     struct sockaddr_in     servaddr; 
+    int iTotalTransmitBytes = NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
+    struct UdpTestingPacket * psSendBuffer = malloc(iTotalTransmitBytes);
+    for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+    {
+        psSendBuffer[i].header.i32PacketIndex = i;
+    }
+    
   
     // Creating socket file descriptor 
     if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) { 
@@ -30,18 +38,31 @@ int main() {
       
     // Filling server information 
     servaddr.sin_family = AF_INET; 
-    servaddr.sin_port = htons(PORT);
-
-    //htonl is requried to put the IP address in the correct format. If you do not use it things wont send
-    servaddr.sin_addr.s_addr = htonl(SERVER_ADDRESS);//;INADDR_ANY; 
+    servaddr.sin_port = htons(UDP_TEST_PORT);
+    servaddr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);//;INADDR_ANY; 
       
     int n, len; 
       
-    sendto(sockfd, (const char *)hello, strlen(hello), 
-        MSG_CONFIRM, (const struct sockaddr *) &servaddr,  
+    // sendto(sockfd, (const char *)hello, strlen(hello), 
+    //     MSG_CONFIRM, (const struct sockaddr *) &servaddr,  
+    //         sizeof(servaddr)); 
+    // printf("Hello message sent.\n"); 
+        
+    clock_t t;
+    t = clock();
+    for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+    {
+        int temp = sendto(sockfd, (const char *)&psSendBuffer[i], sizeof(struct UdpTestingPacket), 
+        0, (const struct sockaddr *) &servaddr,  
             sizeof(servaddr)); 
-    printf("Hello message sent.\n"); 
-          
+        //printf("Sent Packet %ld %d.\n",i,temp); 
+    }
+    t = clock()-t;
+    float fTimeTaken_s = ((float)t)/CLOCKS_PER_SEC; // in seconds 
+    float fDataRate_Gibps = ((float)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
+    printf("It took %f seconds to transmit %d bytes of data\n", fTimeTaken_s,iTotalTransmitBytes);
+    printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
+
     n = recvfrom(sockfd, (char *)buffer, MAXLINE,  
                 MSG_WAITALL, (struct sockaddr *) &servaddr, 
                 &len); 
