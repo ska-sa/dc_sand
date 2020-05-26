@@ -40,7 +40,7 @@ int main() {
     // Filling server information 
     servaddr.sin_family = AF_INET; 
     servaddr.sin_port = htons(UDP_TEST_PORT);
-    servaddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);//;INADDR_ANY; 
+    servaddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
       
     int n, len; 
       
@@ -49,8 +49,8 @@ int main() {
     //         sizeof(servaddr)); 
     // printf("Hello message sent.\n"); 
         
-    clock_t t;
-    t = clock();
+    struct timeval stop, start;
+    gettimeofday(&start, NULL);
     for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
     {
         int temp = sendto(sockfd, (const char *)&psSendBuffer[i], sizeof(struct UdpTestingPacket), 
@@ -58,9 +58,9 @@ int main() {
             sizeof(servaddr)); 
         //printf("Sent Packet %ld %d.\n",i,temp); 
     }
-    t = clock()-t;
-    float fTimeTaken_s = ((float)t)/CLOCKS_PER_SEC; // in seconds 
-    float fDataRate_Gibps = ((float)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
+    gettimeofday(&stop, NULL);
+    float fTimeTaken_s = (stop.tv_sec - start.tv_sec) + ((float)(stop.tv_usec - start.tv_usec))/1000000;
+    double fDataRate_Gibps = ((double)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
     printf("It took %f seconds to transmit %d bytes of data(%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,NUMBER_OF_PACKETS);
     printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
 

@@ -60,23 +60,25 @@ int main() {
     for (size_t i = 0; i < 100000; i++)
     {
         printf("Waiting for stream\n");
-        clock_t t;
-        for (size_t i = 0; i < 2000; i++)
+        
+        struct timeval stop, start;
+        gettimeofday(&start, NULL);
+        for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
         {
-            if(i == 0){
-                t = clock();
-            }
             n = recvfrom(sockfd, (const char *)&psReceiveBuffer[i], sizeof(struct UdpTestingPacket),  
                     MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
                     &len); 
+            if(i == 0){
+                gettimeofday(&start, NULL);
+            }
             //printf("Received Packet %d %d.\n",i,psReceiveBuffer[i].header.i32PacketIndex); 
         }
-        t = clock()-t;
+        gettimeofday(&stop, NULL);
         printf("All Messages Received\n");
 
-        float fTimeTaken_s = ((float)t)/CLOCKS_PER_SEC; // in seconds 
-        float fDataRate_Gibps = ((float)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
-        printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,2000);
+        float fTimeTaken_s = (stop.tv_sec - start.tv_sec) + ((float)(stop.tv_usec - start.tv_usec))/1000000;
+        double fDataRate_Gibps = ((double)iTotalTransmitBytes-sizeof(struct UdpTestingPacket))*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
+        printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,NUMBER_OF_PACKETS-1);
         printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
 
         sendto(sockfd, (const char *)hello, strlen(hello),  
@@ -87,7 +89,5 @@ int main() {
         printf("\n");
     }
 
-    
-      
     return 0; 
 } 
