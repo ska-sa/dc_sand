@@ -95,7 +95,7 @@ __global__ void calculate_beamweights_grouped_channels(
  *  the fastest steering coefficient generation kernel in this project. 
  *  
  *  Input Delay Value Ordering:
- *  This kernel expects the input delay values to be ordered by [channel][antenna][beam] with beam being the fastest 
+ *  This kernel expects the input delay values to be ordered by [antenna][beam] with beam being the fastest 
  *  changing index.
  * 
  *  Output Complex Steering Coefficients Ordering:
