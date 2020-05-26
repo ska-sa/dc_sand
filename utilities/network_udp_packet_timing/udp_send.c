@@ -1,5 +1,9 @@
 
 // Client side implementation of UDP client-server model 
+
+
+#define _GNU_SOURCE //This gives access to the GNU source, specifically needed for the sendmmsg function
+
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <unistd.h> 
@@ -54,9 +58,15 @@ int main() {
     gettimeofday(&start, NULL);
     for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
     {
+        gettimeofday(&psSendBuffer[i].header.cTransmitTime, NULL);
+        //printf("%d %d \n",psSendBuffer[i].header.cTransmitTime.tv_sec,psSendBuffer[i].header.cTransmitTime.tv_usec);
         int temp = sendto(sockfd, (const char *)&psSendBuffer[i], sizeof(struct UdpTestingPacket), 
         0, (const struct sockaddr *) &servaddr,  
             sizeof(servaddr)); 
+        if(temp != sizeof(struct UdpTestingPacket)){
+            printf("Error Transmitting Data: %d",temp);
+            return 1;
+        }
         //printf("Sent Packet %ld %d.\n",i,temp); 
     }
     gettimeofday(&stop, NULL);

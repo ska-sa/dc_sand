@@ -16,7 +16,7 @@
  *  data[PACKET_SIZE_BYTES-sizeof(struct UdpTestingPacketHeader).
  */
 struct UdpTestingPacketHeader{
-    struct tm cTransmitTime; //Time first packet in stream was sent
+    struct timeval cTransmitTime; //Time first packet in stream was sent
     int32_t i32PacketIndex; //Index of the current packet in stream
 };
 
