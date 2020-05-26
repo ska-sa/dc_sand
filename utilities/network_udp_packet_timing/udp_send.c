@@ -8,6 +8,7 @@
 #include <sys/socket.h> //For networking
 #include <arpa/inet.h>  //For networking
 #include <netinet/in.h>  //For networking
+#include <sys/time.h> //For timing functions
 
 #include "network_packets.h"
 
