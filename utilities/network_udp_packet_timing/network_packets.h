@@ -8,7 +8,7 @@
 #define UDP_TEST_PORT       8080
 
 //Number of packets to be sent in a stream. TODO: Replace with a configurable command line parameter.
-#define NUMBER_OF_PACKETS   10
+#define NUMBER_OF_PACKETS   40000
 
 /** Struct that stores \ref UdpTestingPacket metadata. The header struct is seperate from the packet struct as this 
  *  allows fields to be added to the header without having to manually re-calculate the the size of the 

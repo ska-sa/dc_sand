@@ -12,7 +12,8 @@
 #include "network_packets.h"
 
 #define MAXLINE         1024 
-#define SERVER_ADDRESS  "127.0.0.1"
+#define SERVER_ADDRESS  "10.100.101.1"
+#define LOCAL_ADDRESS  "127.0.0.1"
   
 // Driver code 
 int main() { 
@@ -39,7 +40,7 @@ int main() {
     // Filling server information 
     servaddr.sin_family = AF_INET; 
     servaddr.sin_port = htons(UDP_TEST_PORT);
-    servaddr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);//;INADDR_ANY; 
+    servaddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);//;INADDR_ANY; 
       
     int n, len; 
       
@@ -60,7 +61,7 @@ int main() {
     t = clock()-t;
     float fTimeTaken_s = ((float)t)/CLOCKS_PER_SEC; // in seconds 
     float fDataRate_Gibps = ((float)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
-    printf("It took %f seconds to transmit %d bytes of data\n", fTimeTaken_s,iTotalTransmitBytes);
+    printf("It took %f seconds to transmit %d bytes of data(%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,NUMBER_OF_PACKETS);
     printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
 
     n = recvfrom(sockfd, (char *)buffer, MAXLINE,  

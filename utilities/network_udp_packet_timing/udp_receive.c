@@ -57,11 +57,11 @@ int main() {
 
     //printf("Original Message Received\n");
 
-    for (size_t i = 0; i < 1000; i++)
+    for (size_t i = 0; i < 100000; i++)
     {
         printf("Waiting for stream\n");
         clock_t t;
-        for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+        for (size_t i = 0; i < 2000; i++)
         {
             if(i == 0){
                 t = clock();
@@ -76,7 +76,7 @@ int main() {
 
         float fTimeTaken_s = ((float)t)/CLOCKS_PER_SEC; // in seconds 
         float fDataRate_Gibps = ((float)iTotalTransmitBytes)*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
-        printf("It took %f seconds to transmit %d bytes of data\n", fTimeTaken_s,iTotalTransmitBytes);
+        printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,2000);
         printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
 
         sendto(sockfd, (const char *)hello, strlen(hello),  
