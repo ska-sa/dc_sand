@@ -23,10 +23,10 @@ int main() {
     char *hello = "Hello from server"; 
     struct sockaddr_in servaddr, cliaddr; 
 
-    int iTotalTransmitBytes = NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
+    int iTotalTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psReceiveBuffer = malloc(iTotalTransmitBytes);
 
-    struct timeval * psRxTimes = malloc(NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket));
+    struct timeval * psRxTimes = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket));
     
 
     //***** Creating socket file descriptor *****
@@ -77,8 +77,11 @@ int main() {
 
         struct MetadataPacketMaster sConfigurationPacket;
         sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
-        sConfigurationPacket.sSpecifiedTransmitTime.tv_sec = sCurrentTime.tv_sec + 1;
-        sConfigurationPacket.sSpecifiedTransmitTime.tv_usec = 0;
+        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
+        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = 0;
+        sConfigurationPacket.sSpecifiedTransmitStopTime.tv_sec = sCurrentTime.tv_sec + 1;
+        sConfigurationPacket.sSpecifiedTransmitStopTime.tv_usec = 1000;
+        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
 
         sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
             MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
@@ -89,29 +92,31 @@ int main() {
         int32_t i32ReceivedPacketsCount = 0;
         struct timeval stop, start;
         gettimeofday(&start, NULL);
-        for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+        for (;;)//For loop has been removed, trailing packets will instead indicate that the receiver must stop
         {
-            n = recvfrom(sockfd, (const char *)&psReceiveBuffer[i], sizeof(struct UdpTestingPacket)*2,  
-                    MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
+            n = recvfrom(sockfd, (const char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
+                    sizeof(struct UdpTestingPacket)*2, MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
                     &len); 
             if(n != sizeof(struct UdpTestingPacket)){
                 printf("******More than a single packet was received: %d *****",n);
                 return 1;
             }
-            if(psReceiveBuffer[i].sHeader.i32TrailingPacket != 0){
+            if(psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32TrailingPacket != 0){
                 printf("Trailing packet received indicating that some packets were dropped\n");
+                
                 break;
             }
-            i32ReceivedPacketsCount++;//Not counted in the case of a trailing packet
-            if(i == 0){
+            if(i32ReceivedPacketsCount == 0){
                 gettimeofday(&start, NULL);
             }
-            gettimeofday(&psRxTimes[i], NULL);
-            //printf("Received Packet %d %d.\n",i,psReceiveBuffer[i].header.i32PacketIndex); 
+            gettimeofday(&psRxTimes[i32ReceivedPacketsCount], NULL);
+            i32ReceivedPacketsCount++;//Not counted in the case of a trailing packet
         }
+        int i32TotalSentPackets = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;//Takes us to the \
+        trailing packet which is not part of timing
+        printf("All Messages Received\n");
         stop = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply getting system time here as \
         trailing packets can take quite a while to arrive
-        printf("All Messages Received\n");
 
         //***** Analyse data, and calculate and display performance metrics *****
         float fTimeTaken_s = (stop.tv_sec - start.tv_sec) + ((float)(stop.tv_usec - start.tv_usec))/1000000;
@@ -192,7 +197,7 @@ int main() {
         }
 
         printf("\n");
-        printf("%d of %d packets received. Drop rate = %.2f\%\n",i32ReceivedPacketsCount,NUMBER_OF_PACKETS,(1-((double)i32ReceivedPacketsCount)/((double)NUMBER_OF_PACKETS))*100);
+        printf("%d of %d packets received. Drop rate = %.2f\%\n",i32ReceivedPacketsCount,i32TotalSentPackets,(1-((double)i32ReceivedPacketsCount)/((double)i32TotalSentPackets))*100);
         printf("\n");
 
         double fDataRateAvg2_Gibps = ((double)sizeof(struct UdpTestingPacket))/dAvgTxTxDiff/1024.0/1024.0/1024.0*8;//*8 is for bit to byte conversion

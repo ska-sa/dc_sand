@@ -8,7 +8,7 @@
 #define UDP_TEST_PORT       8080
 
 //Number of packets to be sent in a stream. TODO: Replace with a configurable command line parameter.
-#define NUMBER_OF_PACKETS   1000
+#define MAXIMUM_NUMBER_OF_PACKETS   100000
 
 //Metadata Packet Client Codes
 #define CLIENT_MESSAGE_EMPTY 0
@@ -25,6 +25,8 @@
 struct UdpTestingPacketHeader{
     struct timeval sTransmitTime; //Time first packet in stream was sent
     int32_t i32PacketIndex; //Index of the current packet in stream
+    int32_t i32PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
+    At the moment this field is left blank in non-trailing packets
     int32_t i32TrailingPacket; //Sometimes UDP streams drop data making it difficult to know when to stop receiving \
     packets without having some sort of timeout/polling mechanism. Both of these incur additional costs/system calls. \
     For high bandwidth streaming this can result in additional packets being lost. For the purposes of this framework, \
@@ -45,8 +47,9 @@ struct UdpTestingPacket{
  */
 struct MetadataPacketMaster{
     uint32_t u32MetadataPacketCode; //Code specifying the type of metadata within the packet
-    struct timeval sSpecifiedTransmitTime; //Time the client must start transmitting data.
-    float fWaitAfterStreamTransmitted_ms;
+    struct timeval sSpecifiedTransmitStartTime; //Time the client must start transmitting data.
+    struct timeval sSpecifiedTransmitStopTime; //Time the client must stop transmitting data.
+    float fWaitAfterStreamTransmitted_s; //Time to wait before sending trailing packets
 };
 
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test
