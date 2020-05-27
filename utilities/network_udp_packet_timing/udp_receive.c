@@ -17,6 +17,7 @@
   
 // Driver code 
 int main() { 
+    printf("Funnel In Test Server Started\n");
     int sockfd; 
     char buffer[MAXLINE]; 
     char *hello = "Hello from server"; 
@@ -26,21 +27,22 @@ int main() {
     struct UdpTestingPacket * psReceiveBuffer = malloc(iTotalTransmitBytes);
 
     struct timeval * psRxTimes = malloc(NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket));
-      
-    // Creating socket file descriptor 
+    
+
+    //***** Creating socket file descriptor *****
     if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) { 
         perror("socket creation failed"); 
         exit(EXIT_FAILURE); 
     } 
-      
+    
     memset(&servaddr, 0, sizeof(servaddr)); 
     memset(&cliaddr, 0, sizeof(cliaddr)); 
-      
+    
     // Filling server information 
     servaddr.sin_family    = AF_INET; // IPv4 
     servaddr.sin_addr.s_addr = INADDR_ANY; 
     servaddr.sin_port = htons(UDP_TEST_PORT); 
-      
+    
     // Bind the socket with the server address 
     if ( bind(sockfd, (const struct sockaddr *)&servaddr,  
             sizeof(servaddr)) < 0 ) 
@@ -48,22 +50,43 @@ int main() {
         perror("bind failed"); 
         exit(EXIT_FAILURE); 
     } 
-      
+    
     int len, n; 
-  
+
     len = sizeof(cliaddr);  //len is value/resuslt 
-  
-    // n = recvfrom(sockfd, (char *)buffer, MAXLINE,  
-    //             MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
-    //             &len); 
-    // buffer[n] = '\0'; 
 
-    //printf("Original Message Received\n");
-
-    for (size_t i = 0; i < 100000; i++)
+    //Loop is here so that we can write multiple client tests
+    for (size_t k = 0; k < 100000; k++)
     {
-        printf("Waiting for stream\n");
         
+        //***** Waiting for initial hello message from client *****
+        printf("Waiting For Hello Message From Client\n");
+        struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
+        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO){
+            n = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient),  
+                        MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
+                        &len); 
+            printf("Message Received\n");
+        }
+        printf("Hello Message Received\n");
+        
+        //***** Determine and send Configuration Information to client *****
+        printf("Sending Configuration Message to client\n");
+        struct timeval sCurrentTime;
+        gettimeofday(&sCurrentTime,NULL);
+
+        struct MetadataPacketMaster sConfigurationPacket;
+        sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
+        sConfigurationPacket.sSpecifiedTransmitTime.tv_sec = sCurrentTime.tv_sec + 1;
+        sConfigurationPacket.sSpecifiedTransmitTime.tv_usec = 0;
+
+        sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
+            MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
+                len); 
+
+        //***** Wait For Data stream messages from client *****
+        printf("Waiting for stream\n");
+        int32_t i32ReceivedPacketsCount = 0;
         struct timeval stop, start;
         gettimeofday(&start, NULL);
         for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
@@ -73,33 +96,44 @@ int main() {
                     &len); 
             if(n != sizeof(struct UdpTestingPacket)){
                 printf("******More than a single packet was received: %d *****",n);
+                return 1;
             }
+            if(psReceiveBuffer[i].sHeader.i32TrailingPacket != 0){
+                printf("Trailing packet received indicating that some packets were dropped\n");
+                break;
+            }
+            i32ReceivedPacketsCount++;//Not counted in the case of a trailing packet
             if(i == 0){
                 gettimeofday(&start, NULL);
             }
             gettimeofday(&psRxTimes[i], NULL);
             //printf("Received Packet %d %d.\n",i,psReceiveBuffer[i].header.i32PacketIndex); 
         }
-        gettimeofday(&stop, NULL);
+        stop = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply getting system time here as \
+        trailing packets can take quite a while to arrive
         printf("All Messages Received\n");
 
+        //***** Analyse data, and calculate and display performance metrics *****
         float fTimeTaken_s = (stop.tv_sec - start.tv_sec) + ((float)(stop.tv_usec - start.tv_usec))/1000000;
-        double fDataRate_Gibps = ((double)iTotalTransmitBytes-sizeof(struct UdpTestingPacket))*8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
-        printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,NUMBER_OF_PACKETS-1);
-        printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
+        double fDataRate_Gibps = ((i32ReceivedPacketsCount)*sizeof(struct UdpTestingPacket))
+                *8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
 
         double dRxTime_prev = (double)psRxTimes[0].tv_sec + ((double)psRxTimes[0].tv_usec)/1000000.0;
-        double dTxTime_prev = (double)psReceiveBuffer[0].header.cTransmitTime.tv_sec + ((double)psReceiveBuffer[0].header.cTransmitTime.tv_usec)/1000000.0;
+        double dTxTime_prev = (double)psReceiveBuffer[0].sHeader.sTransmitTime.tv_sec + 
+                ((double)psReceiveBuffer[0].sHeader.sTransmitTime.tv_usec)/1000000.0;
+
         double dMinTxRxDiff=1,dMinTxTxDiff=1,dMinRxRxDiff=1;
         double dMaxTxRxDiff=-1,dMaxTxTxDiff=-1,dMaxRxRxDiff=-1;
         double dAvgTxRxDiff=0,dAvgTxTxDiff=0,dAvgRxRxDiff=0;
 
-        for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+        uint8_t u8OutOfOrder = 0;
+        for (size_t i = 0; i < i32ReceivedPacketsCount; i++)
         {
-            if(i != psReceiveBuffer[i].header.i32PacketIndex){
+            if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex){
                 printf("Data received out of order\n");
+                u8OutOfOrder = 1;
             }
-            double dTxTime = (double)psReceiveBuffer[i].header.cTransmitTime.tv_sec + ((double)psReceiveBuffer[i].header.cTransmitTime.tv_usec)/1000000.0;
+            double dTxTime = (double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_sec + ((double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_usec)/1000000.0;
             double dRxTime = (double)psRxTimes[i].tv_sec + ((double)psRxTimes[i].tv_usec)/1000000.0;
 
             double dDiffRxTx = dRxTime-dTxTime;
@@ -133,13 +167,36 @@ int main() {
             dRxTime_prev = dRxTime;
             dTxTime_prev = dTxTime;
         }
-        dAvgTxRxDiff = dAvgTxRxDiff/(NUMBER_OF_PACKETS-1);
+        dAvgTxRxDiff = dAvgTxRxDiff/(i32ReceivedPacketsCount-1);
+        dAvgTxTxDiff = dAvgTxTxDiff/(i32ReceivedPacketsCount-1);
+        dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1);
 
-        printf("TX/RX|%f|%f|%f|\n",dAvgTxRxDiff,dMinTxRxDiff,dMaxTxRxDiff);
-        printf("TX/TX|%f|%f|%f|\n",dAvgTxTxDiff,dMinTxTxDiff,dMaxTxTxDiff);
-        printf("RX/RX|%f|%f|%f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
-        
+        printf("\n Average Time Between Packets\n");
+        printf("     |  Avg(s) |  Min(s) |  Max(s) |\n");
+        printf("TX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgTxRxDiff,dMinTxRxDiff,dMaxTxRxDiff);
+        printf("TX/TX|%9.6f|%9.6f|%9.6f|\n",dAvgTxTxDiff,dMinTxTxDiff,dMaxTxTxDiff);
+        printf("RX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
+        printf("\n");
+        printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,i32ReceivedPacketsCount-1);
+        printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
+        printf("\n");
 
+        if(u8OutOfOrder != 0){
+            printf("\n");
+            printf("*********Data Received out of order********");
+            printf("\n");
+        }else{
+            printf("\n");
+            printf("Data Received in order");
+            printf("\n");
+        }
+
+        printf("\n");
+        printf("%d of %d packets received. Drop rate = %.2f\%\n",i32ReceivedPacketsCount,NUMBER_OF_PACKETS,(1-((double)i32ReceivedPacketsCount)/((double)NUMBER_OF_PACKETS))*100);
+        printf("\n");
+
+        double fDataRateAvg2_Gibps = ((double)sizeof(struct UdpTestingPacket))/dAvgTxTxDiff/1024.0/1024.0/1024.0*8;//*8 is for bit to byte conversion
+        printf("Data Rate According to Average Packet Tx Time Difference: %f Gibps\n",fDataRateAvg2_Gibps);
 
         sendto(sockfd, (const char *)hello, strlen(hello),  
         MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
@@ -149,5 +206,6 @@ int main() {
         printf("\n");
     }
 
+    close(sockfd);
     return 0; 
 } 

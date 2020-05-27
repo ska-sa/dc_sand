@@ -26,15 +26,18 @@ int main() {
     char buffer[MAXLINE]; 
     char *hello = "Hello from client"; 
     struct sockaddr_in     servaddr; 
+
+    //***** Create sample data to be sent *****
     int iTotalTransmitBytes = NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psSendBuffer = malloc(iTotalTransmitBytes);
     for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
     {
-        psSendBuffer[i].header.i32PacketIndex = i;
+        psSendBuffer[i].sHeader.i32PacketIndex = i;
+        psSendBuffer[i].sHeader.i32TrailingPacket = 0;
     }
     
   
-    // Creating socket file descriptor 
+    //***** Creating socket file descriptor *****
     if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) { 
         perror("socket creation failed"); 
         exit(EXIT_FAILURE); 
@@ -48,17 +51,38 @@ int main() {
     servaddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
       
     int n, len; 
-      
-    // sendto(sockfd, (const char *)hello, strlen(hello), 
-    //     MSG_CONFIRM, (const struct sockaddr *) &servaddr,  
-    //         sizeof(servaddr)); 
-    // printf("Hello message sent.\n"); 
-        
+
+    //***** Send Initial Message To Server *****
+    struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
+    sendto(sockfd, (const struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient), 
+         MSG_CONFIRM, (const struct sockaddr *) &servaddr,  
+             sizeof(servaddr)); 
+    printf("Hello message sent.\n"); 
+
+    //**** Wait For Response from Server with Configuration Information
+    struct MetadataPacketMaster sConfigurationPacket;
+    n = recvfrom(sockfd, (struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
+                MSG_WAITALL, (struct sockaddr *) &servaddr, 
+                &len);
+    if(sConfigurationPacket.u32MetadataPacketCode != SERVER_MESSAGE_CONFIGURATION){
+        printf("ERROR: Unexpected Message received from server\n");
+        return 1;
+    }
+    printf("Configuration Message Received from Server\n");
+
+    //***** Wait until the time specified by the server before streaming *****
+    printf("Waiting Until Specified Time To Transmit Data\n");
     struct timeval stop, start;
-    gettimeofday(&start, NULL);
+    do
+    {
+        gettimeofday(&start, NULL);
+    } while (start.tv_sec < sConfigurationPacket.sSpecifiedTransmitTime.tv_sec);
+    
+    
+    //***** Stream data to server *****
     for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
     {
-        gettimeofday(&psSendBuffer[i].header.cTransmitTime, NULL);
+        gettimeofday(&psSendBuffer[i].sHeader.sTransmitTime, NULL);
         //printf("%d %d \n",psSendBuffer[i].header.cTransmitTime.tv_sec,psSendBuffer[i].header.cTransmitTime.tv_usec);
         int temp = sendto(sockfd, (const char *)&psSendBuffer[i], sizeof(struct UdpTestingPacket), 
         0, (const struct sockaddr *) &servaddr,  
@@ -75,11 +99,28 @@ int main() {
     printf("It took %f seconds to transmit %d bytes of data(%d packets)\n", fTimeTaken_s,iTotalTransmitBytes,NUMBER_OF_PACKETS);
     printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
 
-    n = recvfrom(sockfd, (char *)buffer, MAXLINE,  
-                MSG_WAITALL, (struct sockaddr *) &servaddr, 
-                &len); 
-    buffer[n] = '\0'; 
-    printf("Server : %s\n", buffer); 
+    //***** Send Trailing Packets to stop server polling the receive socket *****
+    sleep(1);
+    struct UdpTestingPacket sTrailingPacket;
+    sTrailingPacket.sHeader.i32TrailingPacket = 1;
+    //Transmit a few times to be safe - this is UDP after all
+    for (size_t i = 0; i < 10; i++)
+    {
+        int temp = sendto(sockfd, (const char *)&sTrailingPacket, sizeof(struct UdpTestingPacket), 
+        0, (const struct sockaddr *) &servaddr,  
+            sizeof(servaddr)); 
+        if(temp != sizeof(struct UdpTestingPacket)){
+            printf("Error Transmitting Data: %d",temp);
+            return 1;
+        }
+    }
+    
+
+    // n = recvfrom(sockfd, (char *)buffer, MAXLINE,  
+    //             MSG_WAITALL, (struct sockaddr *) &servaddr, 
+    //             &len); 
+    // buffer[n] = '\0'; 
+    // printf("Server : %s\n", buffer); 
   
     close(sockfd); 
     return 0; 
