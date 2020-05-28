@@ -3,7 +3,8 @@
     1. `sudo ethtool -c enp175s0d1` - View interrupt coalescing settings.
     2. `sudo ethtool -a enp175s0d1` - Determine if link flow control is enabled.
     3. `sudo ethtool -g enp175s0d1` - View network buffer sizes.
-    4. `ethtool -G enp175s0d1 rx 8192 tx 8192` - Set network buffer sizes.
+    4. `ethtool -G enp175s0d1 rx 8192 tx 8192` - Set network buffer sizes to prevent packets getting dropped due to \
+    buffer overflow.
     5. `sudo ethtool -S enp175s0d1` - View all NIC counters. Including TX/RX counters.
 2. `sudo netstat -neopa` - Display all process to socket/ip/port mappings.
 3. netstat

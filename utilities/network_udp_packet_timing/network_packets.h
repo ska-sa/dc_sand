@@ -2,6 +2,7 @@
 #include <time.h> //Gives access clock time
 #include <stdint.h>
 
+//Define the UDP stream packet size
 #define PACKET_SIZE_BYTES   4096 //4KiB
 
 //UDP Port to use for sending streams of test data
@@ -48,8 +49,9 @@ struct UdpTestingPacket{
 struct MetadataPacketMaster{
     uint32_t u32MetadataPacketCode; //Code specifying the type of metadata within the packet
     struct timeval sSpecifiedTransmitStartTime; //Time the client must start transmitting data.
-    struct timeval sSpecifiedTransmitStopTime; //Time the client must stop transmitting data.
+    struct timeval sSpecifiedTransmitTimeLength; //Length of time client must transport data. (Not a clock time)
     float fWaitAfterStreamTransmitted_s; //Time to wait before sending trailing packets
+    float fNumberOfRepeats; //NUmber of times to repeate the tranmit window
 };
 
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test

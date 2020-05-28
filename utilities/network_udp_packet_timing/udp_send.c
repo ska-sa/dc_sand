@@ -16,15 +16,12 @@
 
 #include "network_packets.h"
 
-#define MAXLINE         1024 
-#define SERVER_ADDRESS  "10.100.101.1"
-#define LOCAL_ADDRESS  "127.0.0.1"
+#define SERVER_ADDRESS  "10.100.101.1"//TODO: Make a parameter
+#define LOCAL_ADDRESS  "127.0.0.1"//TODO: Make default value when now paramter is provided.
   
 // Driver code 
 int main() { 
     int sockfd; 
-    char buffer[MAXLINE]; 
-    char *hello = "Hello from client"; 
     struct sockaddr_in     servaddr; 
 
     //***** Create sample data to be sent *****
@@ -83,7 +80,7 @@ int main() {
     //for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
     int iNumberOfPacketsSent = 0;
     double dTransmittedTime = 0;
-    double dEndTime = (double)sConfigurationPacket.sSpecifiedTransmitStopTime.tv_sec + ((double)(sConfigurationPacket.sSpecifiedTransmitStopTime.tv_usec))/1000000.0;
+    double dEndTime = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + (double)sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec + sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec))/1000000.0;
     do
     {
         gettimeofday(&psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime, NULL);
@@ -124,14 +121,7 @@ int main() {
             return 1;
         }
     }
-    
-
-    // n = recvfrom(sockfd, (char *)buffer, MAXLINE,  
-    //             MSG_WAITALL, (struct sockaddr *) &servaddr, 
-    //             &len); 
-    // buffer[n] = '\0'; 
-    // printf("Server : %s\n", buffer); 
-  
+ 
     close(sockfd); 
     return 0; 
 } 
