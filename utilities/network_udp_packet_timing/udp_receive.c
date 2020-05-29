@@ -85,7 +85,7 @@ int main() {
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
         sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
         sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
-        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 10;
+        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
 
         sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
             MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
@@ -144,6 +144,7 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
     double dMaxTxRxDiff=-1,dMaxTxTxDiff=-1,dMaxRxRxDiff=-1;
     double dAvgTxRxDiff=0,dAvgTxTxDiff=0,dAvgRxRxDiff=0;
 
+    int iWindowBoundaries=0;
     uint8_t u8OutOfOrder = 0;
     for (size_t i = 0; i < i32ReceivedPacketsCount; i++)
     {
@@ -151,43 +152,51 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
             printf("Data received out of order\n");
             u8OutOfOrder = 1;
         }
+
         double dTxTime = (double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_sec + ((double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_usec)/1000000.0;
         double dRxTime = (double)psRxTimes[i].tv_sec + ((double)psRxTimes[i].tv_usec)/1000000.0;
 
-        double dDiffRxTx = dRxTime-dTxTime;
-        dAvgTxRxDiff+=dDiffRxTx;
-        if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
-            dMinTxRxDiff = dDiffRxTx;
-        }
-        if(dDiffRxTx > dMaxTxRxDiff){
-            dMaxTxRxDiff = dDiffRxTx;
-        }
+        
+        //Do not calculate numbers on window boundary
+        if(psReceiveBuffer[i-1].sHeader.i32TransmitWindowIndex == psReceiveBuffer[i].sHeader.i32TransmitWindowIndex){
+            double dDiffRxTx = dRxTime-dTxTime;
+            dAvgTxRxDiff+=dDiffRxTx;
+            if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
+                dMinTxRxDiff = dDiffRxTx;
+            }
+            if(dDiffRxTx > dMaxTxRxDiff){
+                dMaxTxRxDiff = dDiffRxTx;
+            }
 
-        double dDiffRxRx = dRxTime-dRxTime_prev;
-        dAvgRxRxDiff+=dDiffRxRx;
-        if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0){
-            dMinRxRxDiff = dDiffRxRx;
-        }
-        if(dDiffRxRx > dMaxRxRxDiff){
-            dMaxRxRxDiff = dDiffRxRx;
-        }
+            double dDiffRxRx = dRxTime-dRxTime_prev;
+            dAvgRxRxDiff+=dDiffRxRx;
+            if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0){
+                dMinRxRxDiff = dDiffRxRx;
+            }
+            if(dDiffRxRx > dMaxRxRxDiff){
+                dMaxRxRxDiff = dDiffRxRx;
+            }
 
-        double dDiffTxTx = dTxTime-dTxTime_prev;
-        dAvgTxTxDiff+=dDiffTxTx;
-        if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0){
-            dMinTxTxDiff = dDiffTxTx;
-        }
-        if(dDiffTxTx > dMaxTxTxDiff){
-            dMaxTxTxDiff = dDiffTxTx;
-        }
+            double dDiffTxTx = dTxTime-dTxTime_prev;
+            dAvgTxTxDiff+=dDiffTxTx;
+            if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0){
+                dMinTxTxDiff = dDiffTxTx;
+            }
+            if(dDiffTxTx > dMaxTxTxDiff){
+                iWindowBoundaries++;
+                dMaxTxTxDiff = dDiffTxTx;
+            }
 
-        printf("Packet %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",i,dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
+            printf("Packet %ld Window %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",i,psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
+        }else{
+            printf("**************************Boundary ************************\n");
+        }
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
     }
-    dAvgTxRxDiff = dAvgTxRxDiff/(i32ReceivedPacketsCount-1);
-    dAvgTxTxDiff = dAvgTxTxDiff/(i32ReceivedPacketsCount-1);
-    dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1);
+    dAvgTxRxDiff = dAvgTxRxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
+    dAvgTxTxDiff = dAvgTxTxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
+    dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
 
     printf("\n Average Time Between Packets\n");
     printf("     |  Avg(s) |  Min(s) |  Max(s) |\n");
@@ -196,7 +205,7 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
     printf("RX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
     printf("\n");
     printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,(i32ReceivedPacketsCount-1)*PACKET_SIZE_BYTES,i32ReceivedPacketsCount-1);
-    printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
+    //printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
     printf("\n");
 
     if(u8OutOfOrder != 0){
