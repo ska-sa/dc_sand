@@ -20,9 +20,10 @@
 #define LOCAL_ADDRESS  "127.0.0.1"//TODO: Make default value when now paramter is provided.
   
 // Driver code 
-int main() { 
-    int sockfd; 
-    struct sockaddr_in     servaddr; 
+int main() 
+{ 
+    int iSocketFileDescriptor; 
+    struct sockaddr_in     sServAddr; 
 
     //***** Create sample data to be sent *****
     int iMaximumTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
@@ -35,33 +36,36 @@ int main() {
     
   
     //***** Creating socket file descriptor *****
-    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) { 
+    if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
+    { 
         perror("socket creation failed"); 
         exit(EXIT_FAILURE); 
     } 
   
-    memset(&servaddr, 0, sizeof(servaddr)); 
+    memset(&sServAddr, 0, sizeof(sServAddr)); 
       
     // Filling server information 
-    servaddr.sin_family = AF_INET; 
-    servaddr.sin_port = htons(UDP_TEST_PORT);
-    servaddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
+    sServAddr.sin_family = AF_INET; 
+    sServAddr.sin_port = htons(UDP_TEST_PORT);
+    sServAddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
       
-    int n, len; 
+    int iSockAddressLength, iSockAddressLength; 
 
     //***** Send Initial Message To Server *****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
-    sendto(sockfd, (const struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient), 
-         MSG_CONFIRM, (const struct sockaddr *) &servaddr,  
-             sizeof(servaddr)); 
+    sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient), 
+         MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
+             sizeof(sServAddr)); 
     printf("Hello message sent.\n"); 
 
     //**** Wait For Response from Server with Configuration Information
     struct MetadataPacketMaster sConfigurationPacket;
-    n = recvfrom(sockfd, (struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
-                MSG_WAITALL, (struct sockaddr *) &servaddr, 
-                &len);
-    if(sConfigurationPacket.u32MetadataPacketCode != SERVER_MESSAGE_CONFIGURATION){
+    iSockAddressLength = recvfrom(iSocketFileDescriptor, (struct MetadataPacketMaster *)&sConfigurationPacket, 
+                sizeof(struct MetadataPacketMaster),  
+                MSG_WAITALL, (struct sockaddr *) &sServAddr, 
+                &iSockAddressLength);
+    if(sConfigurationPacket.u32MetadataPacketCode != SERVER_MESSAGE_CONFIGURATION)
+    {
         printf("ERROR: Unexpected Message received from server\n");
         return 1;
     }
@@ -113,12 +117,14 @@ int main() {
 
             //printf("%d %d \n",iNumPacketsSentTotal,psSendBuffer[iNumPacketsSentTotal].sHeader.i32TrailingPacket);
 
-            int temp = sendto(sockfd, (const char *)&psSendBuffer[iNumPacketsSentTotal], sizeof(struct UdpTestingPacket), 
-                    0, (const struct sockaddr *) &servaddr,  
-                    sizeof(servaddr)); 
+            int temp = sendto(iSocketFileDescriptor, (const char *)&psSendBuffer[iNumPacketsSentTotal], 
+                    sizeof(struct UdpTestingPacket), 
+                    0, (const struct sockaddr *) &sServAddr,  
+                    sizeof(sServAddr)); 
             piNumberOfPacketsSentPerWindow[i]++;
             iNumPacketsSentTotal++;
-            if(temp != sizeof(struct UdpTestingPacket)){
+            if(temp != sizeof(struct UdpTestingPacket))
+            {
                 printf("Error Transmitting Data: %d",temp);
                 return 1;
             }
@@ -150,10 +156,11 @@ int main() {
     //Transmit a few times to be safe - this is UDP after all
     for (size_t i = 0; i < 5; i++)
     {
-        int temp = sendto(sockfd, (const char *)&sTrailingPacket, sizeof(struct UdpTestingPacket), 
-            0, (const struct sockaddr *) &servaddr,  
-            sizeof(servaddr)); 
-        if(temp != sizeof(struct UdpTestingPacket)){
+        int temp = sendto(iSocketFileDescriptor, (const char *)&sTrailingPacket, sizeof(struct UdpTestingPacket), 
+            0, (const struct sockaddr *) &sServAddr,  
+            sizeof(sServAddr)); 
+        if(temp != sizeof(struct UdpTestingPacket))
+        {
             printf("Error Transmitting Data: %d",temp);
             return 1;
         }
@@ -163,6 +170,6 @@ int main() {
     free(psStopTime);
     free(psStartTime);
     free(psSendBuffer);
-    close(sockfd); 
+    close(iSocketFileDescriptor); 
     return 0; 
 } 

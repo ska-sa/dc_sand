@@ -27,9 +27,10 @@ int calculate_metrics(
         int i32TotalSentPackets);
 
 // Driver code 
-int main() { 
+int main() 
+{ 
     printf("Funnel In Test Server Started\n");
-    int sockfd; 
+    int iSocketFileDescriptor; 
     struct sockaddr_in sServAddr, sCliAddr; 
 
     //Allocate buffer of data to be transferred 
@@ -38,7 +39,8 @@ int main() {
     struct timeval * psRxTimes = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket));
     
     //***** Creating socket file descriptor *****
-    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) { 
+    if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
+    { 
         perror("socket creation failed"); 
         exit(EXIT_FAILURE); 
     } 
@@ -52,7 +54,7 @@ int main() {
     sServAddr.sin_port = htons(UDP_TEST_PORT); 
     
     // Bind the socket with the server address 
-    if ( bind(sockfd, (const struct sockaddr *)&sServAddr,  
+    if ( bind(iSocketFileDescriptor, (const struct sockaddr *)&sServAddr,  
             sizeof(sServAddr)) < 0 ) 
     { 
         perror("bind failed"); 
@@ -62,21 +64,22 @@ int main() {
     int iSockAddressLength, iReceivedBytes; 
     iSockAddressLength = sizeof(sCliAddr);
 
-    //Loop is here so that we can write multiple client tests
+    //Loop is here so that we can perform multiple tests.
     for (size_t k = 0; k < TOTAL_CLIENTS; k++)
     {
+        
+        //***** Waiting for initial hello messages from clients *****
         struct sockaddr_in psCliAddrInit[TOTAL_CLIENTS];
         memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*TOTAL_CLIENTS);
-        //Wait for a certain number of clients to connect to server
         for (size_t i = 0; i < TOTAL_CLIENTS; i++)
         {
-            //***** Waiting for initial hello message from client *****
+            
             printf("Waiting For Hello Message From Client %ld of %d\n",i+1,TOTAL_CLIENTS);
             struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
 
             while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
             {
-                iReceivedBytes = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, 
+                iReceivedBytes = recvfrom(iSocketFileDescriptor, (struct MetadataPacketClient *)&sHelloPacket, 
                             sizeof(struct MetadataPacketClient),  
                             MSG_WAITALL, ( struct sockaddr *) &psCliAddrInit[i], 
                             &iSockAddressLength); 
@@ -106,7 +109,7 @@ int main() {
             sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
             sConfigurationPacket.i32ClientIndex = i;
 
-            sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, \
+            sendto(iSocketFileDescriptor, (const struct MetadataPacketMaster *)&sConfigurationPacket, \
                 sizeof(struct MetadataPacketMaster),  
                 MSG_CONFIRM, (const struct sockaddr *) &psCliAddrInit[i], 
                     iSockAddressLength); 
@@ -119,20 +122,23 @@ int main() {
         int32_t i32ReceivedPacketsCount = 0;
         struct timeval sStopTime, sStartTime;
         gettimeofday(&sStartTime, NULL);
-        for (;;)//For loop has been removed, trailing packets will instead indicate that the receiver must stop
+        while(1)//Keep waiting for data until trailing packets have been received
         {  
-            iReceivedBytes = recvfrom(sockfd, (char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
+            iReceivedBytes = recvfrom(iSocketFileDescriptor, (char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
                     sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &sCliAddr, 
                     &iSockAddressLength); 
-            if(iReceivedBytes != sizeof(struct UdpTestingPacket)){
+            if(iReceivedBytes != sizeof(struct UdpTestingPacket))
+            {
                 printf("******More than a single packet was received: %d *****",iReceivedBytes);
                 return 1;
             }
-            if(psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32TrailingPacket != 0){
-                printf("Trailing packet received indicating that some packets were dropped\n");
+            if(psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32TrailingPacket != 0)
+            {
+                printf("Trailing packet received indicating that some packets were dropped.\n");
                 break;
             }
-            if(i32ReceivedPacketsCount == 0){
+            if(i32ReceivedPacketsCount == 0)
+            {
                 gettimeofday(&sStartTime, NULL);
             }
             gettimeofday(&psRxTimes[i32ReceivedPacketsCount], NULL);
@@ -143,9 +149,11 @@ int main() {
         printf("All Messages Received\n");
         sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
         getting system time here as trailing packets can take quite a while to arrive
+
+        //***** Analyse data, and calculate and display performance metrics *****
         calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,i32TotalSentPackets);
     }
-    close(sockfd);
+    close(iSocketFileDescriptor);
 
     return 0;
 } 
@@ -158,7 +166,7 @@ int calculate_metrics(
         int i32ReceivedPacketsCount, 
         int i32TotalSentPackets)
     {
-    //***** Analyse data, and calculate and display performance metrics *****
+    
     float fTimeTaken_s = (sStopTime.tv_sec - sStartTime.tv_sec) + 
             ((float)(sStopTime.tv_usec - sStartTime.tv_usec))/1000000;
     double fDataRate_Gibps = ((i32ReceivedPacketsCount)*sizeof(struct UdpTestingPacket))
@@ -188,28 +196,34 @@ int calculate_metrics(
 
         double dDiffRxTx = dRxTime-dTxTime;
         dAvgTxRxDiff+=dDiffRxTx;
-        if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
+        if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0)
+        {
             dMinTxRxDiff = dDiffRxTx;
         }
-        if(dDiffRxTx > dMaxTxRxDiff){
+        if(dDiffRxTx > dMaxTxRxDiff)
+        {
             dMaxTxRxDiff = dDiffRxTx;
         }
 
         double dDiffRxRx = dRxTime-dRxTime_prev;
         dAvgRxRxDiff+=dDiffRxRx;
-        if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0){
+        if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0)
+        {
             dMinRxRxDiff = dDiffRxRx;
         }
-        if(dDiffRxRx > dMaxRxRxDiff){
+        if(dDiffRxRx > dMaxRxRxDiff)
+        {
             dMaxRxRxDiff = dDiffRxRx;
         }
 
         double dDiffTxTx = dTxTime-dTxTime_prev;
         dAvgTxTxDiff+=dDiffTxTx;
-        if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0){
+        if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0)
+        {
             dMinTxTxDiff = dDiffTxTx;
         }
-        if(dDiffTxTx > dMaxTxTxDiff){
+        if(dDiffTxTx > dMaxTxTxDiff)
+        {
             iWindowBoundaries++;
             dMaxTxTxDiff = dDiffTxTx;
         }
@@ -236,11 +250,14 @@ int calculate_metrics(
     //printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
     printf("\n");
 
-    if(u8OutOfOrder != 0){
+    if(u8OutOfOrder != 0)
+    {
         printf("\n");
         printf("*********Data Received out of order - investigate this. ********");
         printf("\n");
-    }else{
+    }
+    else
+    {
         printf("\n");
         printf("Data Received in order");
         printf("\n");
