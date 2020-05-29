@@ -6,7 +6,7 @@
 #define PACKET_SIZE_BYTES   4096 //4KiB
 
 //UDP Port to use for sending streams of test data
-#define UDP_TEST_PORT       8080
+#define UDP_TEST_PORT       8081
 
 //Number of packets to be sent in a stream. TODO: Replace with a configurable command line parameter.
 #define MAXIMUM_NUMBER_OF_PACKETS   100000

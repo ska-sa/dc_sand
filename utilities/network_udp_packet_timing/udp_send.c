@@ -67,21 +67,24 @@ int main() {
     }
     printf("Configuration Message Received from Server\n");
 
-    //***** Wait until the time specified by the server before streaming - this has to be repeated over a number of windows *****
+    //***** Wait until the time specified by the server before streaming - this has to be repeated over a number of \
+        windows *****
     printf("Waiting Until Specified Time To Transmit Data\n");
     int iNumWindows = sConfigurationPacket.uNumberOfRepeats;
 
     struct timeval * psStopTime = malloc(sizeof(struct timeval)*iNumWindows);
     struct timeval * psStartTime = malloc(sizeof(struct timeval)*iNumWindows);
     int *  piNumberOfPacketsSentPerWindow = malloc(sizeof(int)*iNumWindows);
-    int iNumPacketsSentTotal;
+    int iNumPacketsSentTotal = 0;
 
-    double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
+    double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
+            ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
     double dTimeBetweenWindows = dWindowTransmitTime * iNumWindows;
 
     for (size_t i = 0; i < iNumWindows; i++)
     {
-        double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
+        double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
+                ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
         dTimeToStart_s = dTimeToStart_s + dTimeBetweenWindows*i;
         double dCurrentTime_s = 0;
         do
@@ -100,12 +103,16 @@ int main() {
         do
         {
             gettimeofday(&psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime, NULL);
-            dTransmittedTime_s = (double)psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_sec + ((double)(psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_usec))/1000000.0;
-            //printf("%f %f %d\n",dTransmittedTime,dEndTime,iNumberOfPacketsSent);
-            //printf("%d %d \n",psSendBuffer[i].header.cTransmitTime.tv_sec,psSendBuffer[i].header.cTransmitTime.tv_usec);
+            psSendBuffer[iNumPacketsSentTotal].sHeader.i32TransmitWindowIndex = i;
+
+            dTransmittedTime_s = (double)psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_sec + \
+                    ((double)(psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_usec))/1000000.0;
+
+            //printf("%d %d \n",iNumPacketsSentTotal,psSendBuffer[iNumPacketsSentTotal].sHeader.i32TrailingPacket);
+
             int temp = sendto(sockfd, (const char *)&psSendBuffer[iNumPacketsSentTotal], sizeof(struct UdpTestingPacket), 
-            0, (const struct sockaddr *) &servaddr,  
-                sizeof(servaddr)); 
+                    0, (const struct sockaddr *) &servaddr,  
+                    sizeof(servaddr)); 
             piNumberOfPacketsSentPerWindow[i]++;
             iNumPacketsSentTotal++;
             if(temp != sizeof(struct UdpTestingPacket)){
@@ -117,7 +124,7 @@ int main() {
 
         gettimeofday(&psStopTime[i], NULL);
     }
-    
+    sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
     for (size_t i = 0; i < iNumWindows; i++)
     {
         double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
@@ -127,8 +134,8 @@ int main() {
         printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
         printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
     }
-    //***** Send Trailing Packets to stop server polling the receive socket *****
-    sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
+    //***** Send Trailing Packets to stop server polling the receive socket *****;
+    printf("Transmitting Trailing Packets to server\n");
     struct UdpTestingPacket sTrailingPacket;
     sTrailingPacket.sHeader.i32TrailingPacket = 1;
     sTrailingPacket.sHeader.i32PacketsSent = iNumPacketsSentTotal;
@@ -136,13 +143,14 @@ int main() {
     for (size_t i = 0; i < 10; i++)
     {
         int temp = sendto(sockfd, (const char *)&sTrailingPacket, sizeof(struct UdpTestingPacket), 
-        0, (const struct sockaddr *) &servaddr,  
+            0, (const struct sockaddr *) &servaddr,  
             sizeof(servaddr)); 
         if(temp != sizeof(struct UdpTestingPacket)){
             printf("Error Transmitting Data: %d",temp);
             return 1;
         }
     }
+    printf("Program Done\n");
  
     free(psStopTime);
     free(psStartTime);

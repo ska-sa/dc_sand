@@ -13,7 +13,9 @@
 
 #include "network_packets.h"
   
-#define TRANSMIT_WINDOW_US 1000
+#define TRANSMIT_WINDOW_US 1000 //TODO: Command Line Parameter
+#define TOTAL_WINDOWS_PER_CLIENT 3
+#define TOTAL_CLIENTS 3
 
 int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struct UdpTestingPacket * psReceiveBuffer, struct timeval * psRxTimes ,int i32ReceivedPacketsCount, int i32TotalSentPackets);
 
@@ -55,13 +57,14 @@ int main() {
     len = sizeof(cliaddr);  //len is value/resuslt 
 
     //Loop is here so that we can write multiple client tests
-    for (size_t k = 0; k < 100000; k++)
+    for (size_t k = 0; k < 1; k++)
     {
         
         //***** Waiting for initial hello message from client *****
         printf("Waiting For Hello Message From Client\n");
         struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
-        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO){
+        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
+        {
             n = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient),  
                         MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
                         &len); 
@@ -80,9 +83,9 @@ int main() {
         sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = 0;
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
-        sConfigurationPacket.uNumberOfRepeats = 3;
-        sConfigurationPacket.uNumClients = 3;
-        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
+        sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
+        sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
+        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 10;
 
         sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
             MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
@@ -94,9 +97,9 @@ int main() {
         struct timeval sStopTime, sStartTime;
         gettimeofday(&sStartTime, NULL);
         for (;;)//For loop has been removed, trailing packets will instead indicate that the receiver must stop
-        {
+        {  
             n = recvfrom(sockfd, (char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
-                    sizeof(struct UdpTestingPacket)*2, MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
+                    sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
                     &len); 
             if(n != sizeof(struct UdpTestingPacket)){
                 printf("******More than a single packet was received: %d *****",n);
@@ -117,12 +120,14 @@ int main() {
         printf("All Messages Received\n");
         sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply getting system time here as \
         trailing packets can take quite a while to arrive
-
         close(sockfd);
+
+        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,i32TotalSentPackets);
     }
 
     
-    return 0; 
+    
+    return 0;
 } 
 
 int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struct UdpTestingPacket * psReceiveBuffer, struct timeval * psRxTimes, int i32ReceivedPacketsCount, int i32TotalSentPackets){
