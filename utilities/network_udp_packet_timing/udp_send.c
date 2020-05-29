@@ -49,7 +49,7 @@ int main()
     sServAddr.sin_port = htons(UDP_TEST_PORT);
     sServAddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
       
-    int iSockAddressLength, iSockAddressLength; 
+    int iReceivedBytes, iSockAddressLength; 
 
     //***** Send Initial Message To Server *****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
@@ -60,7 +60,7 @@ int main()
 
     //**** Wait For Response from Server with Configuration Information
     struct MetadataPacketMaster sConfigurationPacket;
-    iSockAddressLength = recvfrom(iSocketFileDescriptor, (struct MetadataPacketMaster *)&sConfigurationPacket, 
+    iReceivedBytes = recvfrom(iSocketFileDescriptor, (struct MetadataPacketMaster *)&sConfigurationPacket, 
                 sizeof(struct MetadataPacketMaster),  
                 MSG_WAITALL, (struct sockaddr *) &sServAddr, 
                 &iSockAddressLength);
