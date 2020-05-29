@@ -17,13 +17,19 @@
 #define TOTAL_WINDOWS_PER_CLIENT 3
 #define TOTAL_CLIENTS 3
 
-int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struct UdpTestingPacket * psReceiveBuffer, struct timeval * psRxTimes ,int i32ReceivedPacketsCount, int i32TotalSentPackets);
+int calculate_metrics(
+        struct timeval sStopTime, 
+        struct timeval sStartTime, 
+        struct UdpTestingPacket * psReceiveBuffer, 
+        struct timeval * psRxTimes ,
+        int i32ReceivedPacketsCount, 
+        int i32TotalSentPackets);
 
 // Driver code 
 int main() { 
     printf("Funnel In Test Server Started\n");
     int sockfd; 
-    struct sockaddr_in servaddr, cliaddr; 
+    struct sockaddr_in sServAddr, sCliAddr; 
 
     //Allocate buffer of data to be transferred 
     int iTotalTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
@@ -36,60 +42,74 @@ int main() {
         exit(EXIT_FAILURE); 
     } 
     
-    memset(&servaddr, 0, sizeof(servaddr)); 
-    memset(&cliaddr, 0, sizeof(cliaddr)); 
+    memset(&sServAddr, 0, sizeof(sServAddr)); 
+    memset(&sCliAddr, 0, sizeof(sCliAddr)); 
     
     // Filling server information 
-    servaddr.sin_family    = AF_INET; // IPv4 
-    servaddr.sin_addr.s_addr = INADDR_ANY; 
-    servaddr.sin_port = htons(UDP_TEST_PORT); 
+    sServAddr.sin_family    = AF_INET; // IPv4 
+    sServAddr.sin_addr.s_addr = INADDR_ANY; 
+    sServAddr.sin_port = htons(UDP_TEST_PORT); 
     
     // Bind the socket with the server address 
-    if ( bind(sockfd, (const struct sockaddr *)&servaddr,  
-            sizeof(servaddr)) < 0 ) 
+    if ( bind(sockfd, (const struct sockaddr *)&sServAddr,  
+            sizeof(sServAddr)) < 0 ) 
     { 
         perror("bind failed"); 
         exit(EXIT_FAILURE); 
     } 
     
-    int len, n; 
-
-    len = sizeof(cliaddr);  //len is value/resuslt 
+    int iSockAddressLength, iReceivedBytes; 
+    iSockAddressLength = sizeof(sCliAddr);
 
     //Loop is here so that we can write multiple client tests
     for (size_t k = 0; k < 1; k++)
     {
-        
-        //***** Waiting for initial hello message from client *****
-        printf("Waiting For Hello Message From Client\n");
-        struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
-        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
+        struct sockaddr_in psCliAddrInit[TOTAL_CLIENTS];
+        memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*TOTAL_CLIENTS);
+        //Wait for a certain number of clients to connect to server
+        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
         {
-            n = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient),  
-                        MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
-                        &len); 
-            printf("Message Received\n");
+            //***** Waiting for initial hello message from client *****
+            printf("Waiting For Hello Message From Client %ld of %d\n",i+1,TOTAL_CLIENTS);
+            struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
+
+            while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
+            {
+                iReceivedBytes = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, 
+                            sizeof(struct MetadataPacketClient),  
+                            MSG_WAITALL, ( struct sockaddr *) &psCliAddrInit[0], 
+                            &iSockAddressLength); 
+                printf("Message Received\n");
+            }
+            printf("Hello Message Received from client %ld\n",i+1);
         }
-        printf("Hello Message Received\n");
+        
+
         
         //***** Determine and send Configuration Information to client *****
         printf("Sending Configuration Message to client\n");
         struct timeval sCurrentTime;
         gettimeofday(&sCurrentTime,NULL);
 
-        struct MetadataPacketMaster sConfigurationPacket;
-        sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
-        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
-        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = 0;
-        sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
-        sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
-        sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
-        sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
-        sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
+        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+        {
+            struct MetadataPacketMaster sConfigurationPacket;
+            sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
+            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
+            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * TRANSMIT_WINDOW_US;
+            sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
+            sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
+            sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
+            sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
+            sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
+            sConfigurationPacket.i32ClientIndex = i;
 
-        sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
-            MSG_CONFIRM, (const struct sockaddr *) &cliaddr, 
-                len); 
+            sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
+                MSG_CONFIRM, (const struct sockaddr *) &psCliAddrInit[i], 
+                    iSockAddressLength); 
+        }
+        
+        
 
         //***** Wait For Data stream messages from client *****
         printf("Waiting for stream\n");
@@ -98,11 +118,11 @@ int main() {
         gettimeofday(&sStartTime, NULL);
         for (;;)//For loop has been removed, trailing packets will instead indicate that the receiver must stop
         {  
-            n = recvfrom(sockfd, (char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
-                    sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &cliaddr, 
-                    &len); 
-            if(n != sizeof(struct UdpTestingPacket)){
-                printf("******More than a single packet was received: %d *****",n);
+            iReceivedBytes = recvfrom(sockfd, (char *)&psReceiveBuffer[i32ReceivedPacketsCount], 
+                    sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &sCliAddr, 
+                    &iSockAddressLength); 
+            if(iReceivedBytes != sizeof(struct UdpTestingPacket)){
+                printf("******More than a single packet was received: %d *****",iReceivedBytes);
                 return 1;
             }
             if(psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32TrailingPacket != 0){
@@ -118,21 +138,26 @@ int main() {
         int i32TotalSentPackets = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;//Takes us to the \
         trailing packet which is not part of timing
         printf("All Messages Received\n");
-        sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply getting system time here as \
-        trailing packets can take quite a while to arrive
-        close(sockfd);
-
+        sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
+        getting system time here as trailing packets can take quite a while to arrive
         calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,i32TotalSentPackets);
     }
+    close(sockfd);
 
-    
-    
     return 0;
 } 
 
-int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struct UdpTestingPacket * psReceiveBuffer, struct timeval * psRxTimes, int i32ReceivedPacketsCount, int i32TotalSentPackets){
+int calculate_metrics(
+        struct timeval sStopTime, 
+        struct timeval sStartTime, 
+        struct UdpTestingPacket * psReceiveBuffer, 
+        struct timeval * psRxTimes, 
+        int i32ReceivedPacketsCount, 
+        int i32TotalSentPackets)
+    {
     //***** Analyse data, and calculate and display performance metrics *****
-    float fTimeTaken_s = (sStopTime.tv_sec - sStartTime.tv_sec) + ((float)(sStopTime.tv_usec - sStartTime.tv_usec))/1000000;
+    float fTimeTaken_s = (sStopTime.tv_sec - sStartTime.tv_sec) + 
+            ((float)(sStopTime.tv_usec - sStartTime.tv_usec))/1000000;
     double fDataRate_Gibps = ((i32ReceivedPacketsCount)*sizeof(struct UdpTestingPacket))
             *8.0/fTimeTaken_s/1024.0/1024.0/1024.0;
 
@@ -148,12 +173,14 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
     uint8_t u8OutOfOrder = 0;
     for (size_t i = 0; i < i32ReceivedPacketsCount; i++)
     {
-        if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex){
+        if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex)
+        {
             printf("Data received out of order\n");
             u8OutOfOrder = 1;
         }
 
-        double dTxTime = (double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_sec + ((double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_usec)/1000000.0;
+        double dTxTime = (double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_sec 
+                + ((double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_usec)/1000000.0;
         double dRxTime = (double)psRxTimes[i].tv_sec + ((double)psRxTimes[i].tv_usec)/1000000.0;
 
         
@@ -187,7 +214,9 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
                 dMaxTxTxDiff = dDiffTxTx;
             }
 
-            printf("Packet %ld Window %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",i,psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
+            printf("Client %d Packet %ld Window %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
+                    psReceiveBuffer[i].sHeader.i32ClientIndex,i,psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,
+                    dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
         }else{
             printf("**************************Boundary ************************\n");
         }
@@ -204,7 +233,8 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
     printf("TX/TX|%9.6f|%9.6f|%9.6f|\n",dAvgTxTxDiff,dMinTxTxDiff,dMaxTxTxDiff);
     printf("RX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
     printf("\n");
-    printf("It took %f seconds to receive %d bytes of data (%d packets)\n", fTimeTaken_s,(i32ReceivedPacketsCount-1)*PACKET_SIZE_BYTES,i32ReceivedPacketsCount-1);
+    printf("It took %f seconds to receive %d bytes of data (%d packets)\n", 
+           fTimeTaken_s,(i32ReceivedPacketsCount-1)*PACKET_SIZE_BYTES,i32ReceivedPacketsCount-1);
     //printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
     printf("\n");
 
@@ -219,10 +249,13 @@ int calculate_metrics(struct timeval sStopTime, struct timeval sStartTime, struc
     }
 
     printf("\n");
-    printf("%d of %d packets received. Drop rate = %.2f %%\n",i32ReceivedPacketsCount,i32TotalSentPackets,(1-((double)i32ReceivedPacketsCount)/((double)i32TotalSentPackets))*100);
+    printf("%d of %d packets received. Drop rate = %.2f %%\n",
+            i32ReceivedPacketsCount,i32TotalSentPackets,
+            (1-((double)i32ReceivedPacketsCount)/((double)i32TotalSentPackets))*100);
     printf("\n");
 
-    double fDataRateAvg2_Gibps = ((double)sizeof(struct UdpTestingPacket))/dAvgTxTxDiff/1024.0/1024.0/1024.0*8;//*8 is for bit to byte conversion
+    double fDataRateAvg2_Gibps = ((double)sizeof(struct UdpTestingPacket))/dAvgTxTxDiff/1024.0/1024.0/1024.0*8;//*8 is \
+    for bit to byte conversion
     printf("Data Rate According to Average Packet Tx Time Difference: %f Gibps\n",fDataRateAvg2_Gibps);
 
     printf("\n");

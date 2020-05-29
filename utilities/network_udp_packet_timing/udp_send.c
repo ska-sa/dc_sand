@@ -104,6 +104,7 @@ int main() {
         {
             gettimeofday(&psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime, NULL);
             psSendBuffer[iNumPacketsSentTotal].sHeader.i32TransmitWindowIndex = i;
+            psSendBuffer[iNumPacketsSentTotal].sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
 
             dTransmittedTime_s = (double)psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_sec + \
                     ((double)(psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_usec))/1000000.0;
@@ -127,11 +128,13 @@ int main() {
     sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
     for (size_t i = 0; i < iNumWindows; i++)
     {
-        double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
+        double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + 
+                ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
         int iTotalTransmitBytes = piNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
         double dDataRate_Gibps = ((double)iTotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
         printf("Window %ld\n",i);
-        printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
+        printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", 
+                dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
         printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
     }
     //***** Send Trailing Packets to stop server polling the receive socket *****;
