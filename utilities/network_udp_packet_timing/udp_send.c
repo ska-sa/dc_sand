@@ -80,12 +80,13 @@ int main() {
     double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
             ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
     double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
+    //("%f\n",dTimeBetweenWindows);
 
     for (size_t i = 0; i < iNumWindows; i++)
     {
         double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
                 ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
-        dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*i;
+        dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*i*sConfigurationPacket.uNumClients;
         double dCurrentTime_s = 0;
         do
         {
@@ -93,6 +94,7 @@ int main() {
             dCurrentTime_s = psStartTime[i].tv_sec + ((double)psStartTime[i].tv_usec)/1000000.0;
         } while(dTimeToStart_s > dCurrentTime_s);
         
+        //printf("Window %d: %f\n",i,dTimeToStart_s);
         
         //***** Stream data to server *****
         //This has to take place on a number of occasions

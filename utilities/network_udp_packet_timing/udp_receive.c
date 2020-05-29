@@ -14,9 +14,9 @@
 #include "network_packets.h"
   
 #define TRANSMIT_WINDOW_US 1000 //TODO: Command Line Parameter
-#define DEAD_TIME_US 100 //TODO: Command Line Parameter
+#define DEAD_TIME_US 1000 //TODO: Command Line Parameter
 #define TOTAL_WINDOWS_PER_CLIENT 3 //TODO: Command Line Parameter
-#define TOTAL_CLIENTS 1 //TODO: Command Line Parameter
+#define TOTAL_CLIENTS 2 //TODO: Command Line Parameter
 
 int calculate_metrics(
         struct timeval sStopTime, 
@@ -106,7 +106,8 @@ int main() {
             sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
             sConfigurationPacket.i32ClientIndex = i;
 
-            sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, sizeof(struct MetadataPacketMaster),  
+            sendto(sockfd, (const struct MetadataPacketMaster *)&sConfigurationPacket, \
+                sizeof(struct MetadataPacketMaster),  
                 MSG_CONFIRM, (const struct sockaddr *) &psCliAddrInit[i], 
                     iSockAddressLength); 
         }
@@ -185,43 +186,38 @@ int calculate_metrics(
                 + ((double)psReceiveBuffer[i].sHeader.sTransmitTime.tv_usec)/1000000.0;
         double dRxTime = (double)psRxTimes[i].tv_sec + ((double)psRxTimes[i].tv_usec)/1000000.0;
 
-        
-        //Do not calculate numbers on window boundary
-        //if(psReceiveBuffer[i-1].sHeader.i32TransmitWindowIndex == psReceiveBuffer[i].sHeader.i32TransmitWindowIndex){
-            double dDiffRxTx = dRxTime-dTxTime;
-            dAvgTxRxDiff+=dDiffRxTx;
-            if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
-                dMinTxRxDiff = dDiffRxTx;
-            }
-            if(dDiffRxTx > dMaxTxRxDiff){
-                dMaxTxRxDiff = dDiffRxTx;
-            }
+        double dDiffRxTx = dRxTime-dTxTime;
+        dAvgTxRxDiff+=dDiffRxTx;
+        if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
+            dMinTxRxDiff = dDiffRxTx;
+        }
+        if(dDiffRxTx > dMaxTxRxDiff){
+            dMaxTxRxDiff = dDiffRxTx;
+        }
 
-            double dDiffRxRx = dRxTime-dRxTime_prev;
-            dAvgRxRxDiff+=dDiffRxRx;
-            if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0){
-                dMinRxRxDiff = dDiffRxRx;
-            }
-            if(dDiffRxRx > dMaxRxRxDiff){
-                dMaxRxRxDiff = dDiffRxRx;
-            }
+        double dDiffRxRx = dRxTime-dRxTime_prev;
+        dAvgRxRxDiff+=dDiffRxRx;
+        if(dDiffRxRx < dMinRxRxDiff && dDiffRxRx != 0){
+            dMinRxRxDiff = dDiffRxRx;
+        }
+        if(dDiffRxRx > dMaxRxRxDiff){
+            dMaxRxRxDiff = dDiffRxRx;
+        }
 
-            double dDiffTxTx = dTxTime-dTxTime_prev;
-            dAvgTxTxDiff+=dDiffTxTx;
-            if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0){
-                dMinTxTxDiff = dDiffTxTx;
-            }
-            if(dDiffTxTx > dMaxTxTxDiff){
-                iWindowBoundaries++;
-                dMaxTxTxDiff = dDiffTxTx;
-            }
+        double dDiffTxTx = dTxTime-dTxTime_prev;
+        dAvgTxTxDiff+=dDiffTxTx;
+        if(dDiffTxTx < dMinTxTxDiff && dDiffTxTx != 0){
+            dMinTxTxDiff = dDiffTxTx;
+        }
+        if(dDiffTxTx > dMaxTxTxDiff){
+            iWindowBoundaries++;
+            dMaxTxTxDiff = dDiffTxTx;
+        }
 
-            printf("Client %d Packet %ld Window %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
-                    psReceiveBuffer[i].sHeader.i32ClientIndex,i,psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,
-                    dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
-        //}else{
-        //    printf("**************************Boundary ************************\n");
-        //}
+        printf("Client %d Window %d Packet %ld  TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
+                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
+                dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
     }
