@@ -70,21 +70,25 @@ int main() {
     //***** Wait until the time specified by the server before streaming *****
     printf("Waiting Until Specified Time To Transmit Data\n");
     struct timeval stop, start;
+
+    double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
+    double dCurrentTime_s = 0;
     do
     {
         gettimeofday(&start, NULL);
-    } while (start.tv_sec < sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec);
+        dCurrentTime_s = start.tv_sec + ((double)start.tv_usec)/1000000.0;
+    } while(dTimeToStart_s > dCurrentTime_s);
     
     
     //***** Stream data to server *****
-    //for (size_t i = 0; i < NUMBER_OF_PACKETS; i++)
+    //This has to take place on a number of occasions
     int iNumberOfPacketsSent = 0;
-    double dTransmittedTime = 0;
+    double dTransmittedTime_s = 0;
     double dEndTime = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + (double)sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec + sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec))/1000000.0;
     do
     {
         gettimeofday(&psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime, NULL);
-        dTransmittedTime = (double)psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime.tv_sec + ((double)(psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime.tv_usec))/1000000.0;
+        dTransmittedTime_s = (double)psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime.tv_sec + ((double)(psSendBuffer[iNumberOfPacketsSent].sHeader.sTransmitTime.tv_usec))/1000000.0;
         //printf("%f %f %d\n",dTransmittedTime,dEndTime,iNumberOfPacketsSent);
         //printf("%d %d \n",psSendBuffer[i].header.cTransmitTime.tv_sec,psSendBuffer[i].header.cTransmitTime.tv_usec);
         int temp = sendto(sockfd, (const char *)&psSendBuffer[iNumberOfPacketsSent], sizeof(struct UdpTestingPacket), 
@@ -96,7 +100,7 @@ int main() {
             return 1;
         }
         //printf("Sent Packet %ld %d.\n",i,temp); 
-    }while(dTransmittedTime < dEndTime);
+    }while(dTransmittedTime_s < dEndTime);
 
     gettimeofday(&stop, NULL);
     double dTimeTaken_s = (stop.tv_sec - start.tv_sec) + ((double)(stop.tv_usec - start.tv_usec))/1000000;

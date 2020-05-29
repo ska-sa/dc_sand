@@ -33,6 +33,8 @@ struct UdpTestingPacketHeader{
     For high bandwidth streaming this can result in additional packets being lost. For the purposes of this framework, \
     A few packets will be transmitted a long time after the end of the stream with this flag set to not zero. When the \
     receiver detects these signals, it know that sending is complete and to not pole any further.
+    int32_t i32TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
+    this packet was tranmitted in
 };
 
 /** Packet that will be transmitted to the server. Contains dummy data and useful header data. See 
@@ -51,7 +53,8 @@ struct MetadataPacketMaster{
     struct timeval sSpecifiedTransmitStartTime; //Time the client must start transmitting data.
     struct timeval sSpecifiedTransmitTimeLength; //Length of time client must transport data. (Not a clock time)
     float fWaitAfterStreamTransmitted_s; //Time to wait before sending trailing packets
-    float fNumberOfRepeats; //NUmber of times to repeate the tranmit window
+    uint32_t uNumberOfRepeats; //Number of times to repeate the tranmit window
+    uint32_t uNumClients; //Number of different clients transmitting data to the server.
 };
 
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test

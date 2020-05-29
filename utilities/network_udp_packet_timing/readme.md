@@ -1,11 +1,13 @@
 ## Useful Network Monitoring Commands:
 1. ethtool
     1. `sudo ethtool -c enp175s0d1` - View interrupt coalescing settings.
-    2. `sudo ethtool -a enp175s0d1` - Determine if link flow control is enabled.
-    3. `sudo ethtool -g enp175s0d1` - View network buffer sizes.
-    4. `ethtool -G enp175s0d1 rx 8192 tx 8192` - Set network buffer sizes to prevent packets getting dropped due to \
+    2. `sudo ethtool -C enp175s0d1 tx-usecs 16 tx-frames 16` - Set interrupt coalescing for TX parameters. Setting both\
+    usecs and frames to 16 seems to be the optimal setup on dbelab07.
+    3. `sudo ethtool -a enp175s0d1` - Determine if link flow control is enabled.
+    4. `sudo ethtool -g enp175s0d1` - View network buffer sizes.
+    5. `ethtool -G enp175s0d1 rx 8192 tx 8192` - Set network buffer sizes to prevent packets getting dropped due to \
     buffer overflow.
-    5. `sudo ethtool -S enp175s0d1` - View all NIC counters. Including TX/RX counters.
+    6. `sudo ethtool -S enp175s0d1` - View all NIC counters. Including TX/RX counters.
 2. `sudo netstat -neopa` - Display all process to socket/ip/port mappings.
 3. netstat
     1. `netstat -su` - Display all protocol specific counters. Does not seperate by interface.
