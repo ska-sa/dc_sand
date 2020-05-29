@@ -79,13 +79,13 @@ int main() {
 
     double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
             ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
-    double dTimeBetweenWindows = dWindowTransmitTime * iNumWindows;
+    double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
 
     for (size_t i = 0; i < iNumWindows; i++)
     {
         double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
                 ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
-        dTimeToStart_s = dTimeToStart_s + dTimeBetweenWindows*i;
+        dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*i;
         double dCurrentTime_s = 0;
         do
         {
@@ -137,13 +137,16 @@ int main() {
                 dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
         printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
     }
+
+
+
     //***** Send Trailing Packets to stop server polling the receive socket *****;
     printf("Transmitting Trailing Packets to server\n");
     struct UdpTestingPacket sTrailingPacket;
     sTrailingPacket.sHeader.i32TrailingPacket = 1;
     sTrailingPacket.sHeader.i32PacketsSent = iNumPacketsSentTotal;
     //Transmit a few times to be safe - this is UDP after all
-    for (size_t i = 0; i < 10; i++)
+    for (size_t i = 0; i < 5; i++)
     {
         int temp = sendto(sockfd, (const char *)&sTrailingPacket, sizeof(struct UdpTestingPacket), 
             0, (const struct sockaddr *) &servaddr,  

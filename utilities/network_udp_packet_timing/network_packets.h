@@ -36,6 +36,7 @@ struct UdpTestingPacketHeader{
     int32_t i32TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
     this packet was tranmitted in
     int32_t i32ClientIndex; //The index of this client within the collection of clients
+    
 };
 
 /** Packet that will be transmitted to the server. Contains dummy data and useful header data. See 
@@ -57,6 +58,7 @@ struct MetadataPacketMaster{
     uint32_t uNumberOfRepeats; //Number of times to repeate the tranmit window
     uint32_t uNumClients; //Number of different clients transmitting data to the server.
     uint32_t i32ClientIndex; //The server tells the client what its number is among all the clients
+    int32_t i32DeadTime_us; //The amount of space between clients where no data is being transferred
 };
 
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test

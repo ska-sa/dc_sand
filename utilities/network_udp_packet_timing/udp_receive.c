@@ -14,8 +14,9 @@
 #include "network_packets.h"
   
 #define TRANSMIT_WINDOW_US 1000 //TODO: Command Line Parameter
-#define TOTAL_WINDOWS_PER_CLIENT 3
-#define TOTAL_CLIENTS 3
+#define DEAD_TIME_US 100 //TODO: Command Line Parameter
+#define TOTAL_WINDOWS_PER_CLIENT 3 //TODO: Command Line Parameter
+#define TOTAL_CLIENTS 1 //TODO: Command Line Parameter
 
 int calculate_metrics(
         struct timeval sStopTime, 
@@ -62,7 +63,7 @@ int main() {
     iSockAddressLength = sizeof(sCliAddr);
 
     //Loop is here so that we can write multiple client tests
-    for (size_t k = 0; k < 1; k++)
+    for (size_t k = 0; k < TOTAL_CLIENTS; k++)
     {
         struct sockaddr_in psCliAddrInit[TOTAL_CLIENTS];
         memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*TOTAL_CLIENTS);
@@ -77,7 +78,7 @@ int main() {
             {
                 iReceivedBytes = recvfrom(sockfd, (struct MetadataPacketClient *)&sHelloPacket, 
                             sizeof(struct MetadataPacketClient),  
-                            MSG_WAITALL, ( struct sockaddr *) &psCliAddrInit[0], 
+                            MSG_WAITALL, ( struct sockaddr *) &psCliAddrInit[i], 
                             &iSockAddressLength); 
                 printf("Message Received\n");
             }
@@ -96,9 +97,10 @@ int main() {
             struct MetadataPacketMaster sConfigurationPacket;
             sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
             sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
-            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * TRANSMIT_WINDOW_US;
+            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (TRANSMIT_WINDOW_US + DEAD_TIME_US);
             sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
             sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
+            sConfigurationPacket.i32DeadTime_us = DEAD_TIME_US;
             sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
             sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
             sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
@@ -185,7 +187,7 @@ int calculate_metrics(
 
         
         //Do not calculate numbers on window boundary
-        if(psReceiveBuffer[i-1].sHeader.i32TransmitWindowIndex == psReceiveBuffer[i].sHeader.i32TransmitWindowIndex){
+        //if(psReceiveBuffer[i-1].sHeader.i32TransmitWindowIndex == psReceiveBuffer[i].sHeader.i32TransmitWindowIndex){
             double dDiffRxTx = dRxTime-dTxTime;
             dAvgTxRxDiff+=dDiffRxTx;
             if(dDiffRxTx < dMinTxRxDiff && dDiffRxTx != 0){
@@ -217,15 +219,15 @@ int calculate_metrics(
             printf("Client %d Packet %ld Window %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
                     psReceiveBuffer[i].sHeader.i32ClientIndex,i,psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,
                     dTxTime,dRxTime,dDiffRxTx,dDiffTxTx,dDiffRxRx);
-        }else{
-            printf("**************************Boundary ************************\n");
-        }
+        //}else{
+        //    printf("**************************Boundary ************************\n");
+        //}
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
     }
-    dAvgTxRxDiff = dAvgTxRxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
-    dAvgTxTxDiff = dAvgTxTxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
-    dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1-iWindowBoundaries);
+    dAvgTxRxDiff = dAvgTxRxDiff/(i32ReceivedPacketsCount-1);
+    dAvgTxTxDiff = dAvgTxTxDiff/(i32ReceivedPacketsCount-1);
+    dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1);
 
     printf("\n Average Time Between Packets\n");
     printf("     |  Avg(s) |  Min(s) |  Max(s) |\n");
