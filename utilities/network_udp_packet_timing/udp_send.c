@@ -53,8 +53,9 @@ int main()
 
     //***** Send Initial Message To Server *****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
-    sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, sizeof(struct MetadataPacketClient), 
-         MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
+    sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, 
+        sizeof(struct MetadataPacketClient), 
+        MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
              sizeof(sServAddr)); 
     printf("Hello message sent.\n"); 
 
@@ -133,6 +134,7 @@ int main()
 
         gettimeofday(&psStopTime[i], NULL);
     }
+
     sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
     for (size_t i = 0; i < iNumWindows; i++)
     {
@@ -153,6 +155,7 @@ int main()
     struct UdpTestingPacket sTrailingPacket;
     sTrailingPacket.sHeader.i32TrailingPacket = 1;
     sTrailingPacket.sHeader.i32PacketsSent = iNumPacketsSentTotal;
+    sTrailingPacket.sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
     //Transmit a few times to be safe - this is UDP after all
     for (size_t i = 0; i < 5; i++)
     {

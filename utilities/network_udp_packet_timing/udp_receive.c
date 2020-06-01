@@ -14,9 +14,18 @@
 #include "network_packets.h"
   
 #define TRANSMIT_WINDOW_US 1000 //TODO: Command Line Parameter
-#define DEAD_TIME_US 1000 //TODO: Command Line Parameter
+#define DEAD_TIME_US 100 //TODO: Command Line Parameter
 #define TOTAL_WINDOWS_PER_CLIENT 3 //TODO: Command Line Parameter
 #define TOTAL_CLIENTS 2 //TODO: Command Line Parameter
+
+
+// int parse_cmd_parameters(
+//         int argc, 
+//         char *argv[], 
+//         uint32_t * u32TransmitWindowLength_us,
+//         uint32_t * u32DeadTime_us,
+//         uint32_t * u32TransmitWindowsperClient,
+//         uint32_t * u32TotalClients);
 
 int calculate_metrics(
         struct timeval sStopTime, 
@@ -27,7 +36,7 @@ int calculate_metrics(
         int i32TotalSentPackets);
 
 // Driver code 
-int main() 
+int main(int argc, char *argv[]) 
 { 
     printf("Funnel In Test Server Started\n");
     int iSocketFileDescriptor; 
@@ -106,7 +115,7 @@ int main()
             sConfigurationPacket.i32DeadTime_us = DEAD_TIME_US;
             sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
             sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
-            sConfigurationPacket.fWaitAfterStreamTransmitted_s = 2;
+            sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
             sConfigurationPacket.i32ClientIndex = i;
 
             sendto(iSocketFileDescriptor, (const struct MetadataPacketMaster *)&sConfigurationPacket, \
@@ -118,6 +127,12 @@ int main()
         
 
         //***** Wait For Data stream messages from client *****
+        uint8_t * pu8TrailingPacketReceived = (uint8_t*) malloc(TOTAL_CLIENTS*sizeof(uint8_t));
+        memset(pu8TrailingPacketReceived,0,TOTAL_CLIENTS*sizeof(uint8_t));
+        int * piTotalSentPacketsPerClient = (int *) malloc(TOTAL_CLIENTS*sizeof(int));
+        memset(piTotalSentPacketsPerClient,0,TOTAL_CLIENTS*sizeof(int));
+        
+
         printf("Waiting for stream\n");
         int32_t i32ReceivedPacketsCount = 0;
         struct timeval sStopTime, sStartTime;
@@ -129,14 +144,36 @@ int main()
                     &iSockAddressLength); 
             if(iReceivedBytes != sizeof(struct UdpTestingPacket))
             {
-                printf("******More than a single packet was received: %d *****",iReceivedBytes);
+                printf("****** More than a single packet was received: %d *****",iReceivedBytes);
                 return 1;
             }
+
+            //This if-statement confirms end condition has been received - I think a better way to do this in the \
+            future would be to just wait until a set time has passed and then send out of band messages to the clients \
+            asking for meta data. This is not worth changing for now.
             if(psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32TrailingPacket != 0)
             {
-                printf("Trailing packet received indicating that some packets were dropped.\n");
-                break;
+                int iClientIndex = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32ClientIndex;
+                pu8TrailingPacketReceived[iClientIndex] = 1;
+                piTotalSentPacketsPerClient[iClientIndex] = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;
+                printf("Trailing packet received indicating client %d has finished transmitting.\n",
+                        psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32ClientIndex);
+                
+                uint8_t u8End = 1;
+                for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+                {
+                    if(pu8TrailingPacketReceived[i] == 0){
+                        u8End = 0;
+                        break;
+                    }
+                }
+                
+                if(u8End == 1){
+                    break;
+                }
+                continue;
             }
+
             if(i32ReceivedPacketsCount == 0)
             {
                 gettimeofday(&sStartTime, NULL);
@@ -144,15 +181,28 @@ int main()
             gettimeofday(&psRxTimes[i32ReceivedPacketsCount], NULL);
             i32ReceivedPacketsCount++;//Not counted in the case of a trailing packet
         }
-        int i32TotalSentPackets = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;//Takes us to the \
-        trailing packet which is not part of timing
+
         printf("All Messages Received\n");
+        int iTotalSentPackets = 0;
+        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+        {
+            iTotalSentPackets += piTotalSentPacketsPerClient[i];
+        }
+        
         sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
         getting system time here as trailing packets can take quite a while to arrive
 
         //***** Analyse data, and calculate and display performance metrics *****
-        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,i32TotalSentPackets);
+        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,iTotalSentPackets);
+
+        //Per for loop cleanup
+        free(pu8TrailingPacketReceived);
+        free(piTotalSentPacketsPerClient);
     }
+
+    //Cleanup
+    free(psReceiveBuffer);
+    free(psRxTimes);
     close(iSocketFileDescriptor);
 
     return 0;
@@ -184,7 +234,8 @@ int calculate_metrics(
     uint8_t u8OutOfOrder = 0;
     for (size_t i = 0; i < i32ReceivedPacketsCount; i++)
     {
-        if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex)
+        if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex 
+                && psReceiveBuffer[i-1].sHeader.i32ClientIndex == psReceiveBuffer[i].sHeader.i32ClientIndex)
         {
             printf("Data received out of order\n");
             u8OutOfOrder = 1;
