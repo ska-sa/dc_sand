@@ -129,7 +129,8 @@ int main(int argc, char *argv[])
             struct MetadataPacketMaster sConfigurationPacket;
             sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
             sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
-            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (u32TransmitWindowLength_us + u32DeadTime_us);
+            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (u32TransmitWindowLength_us + 
+                    u32DeadTime_us);
             sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
             sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = u32TransmitWindowLength_us;
             sConfigurationPacket.i32DeadTime_us = u32DeadTime_us;
@@ -175,7 +176,8 @@ int main(int argc, char *argv[])
             {
                 int iClientIndex = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32ClientIndex;
                 pu8TrailingPacketReceived[iClientIndex] = 1;
-                piTotalSentPacketsPerClient[iClientIndex] = psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;
+                piTotalSentPacketsPerClient[iClientIndex] = 
+                        psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32PacketsSent;
                 printf("Trailing packet received indicating client %d has finished transmitting.\n",
                         psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32ClientIndex);
                 
@@ -213,7 +215,8 @@ int main(int argc, char *argv[])
         getting system time here as trailing packets can take quite a while to arrive.
 
         //***** Analyse data, and calculate and display performance metrics *****
-        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,iTotalSentPackets,pu8OutputFileName);
+        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,
+                psRxTimes,i32ReceivedPacketsCount,iTotalSentPackets,pu8OutputFileName);
 
         //Per for loop cleanup
         free(pu8TrailingPacketReceived);
@@ -237,8 +240,19 @@ int calculate_metrics(
         int i32ReceivedPacketsCount, 
         int i32TotalSentPackets,
         char * pi8OutputFileName)
-    {
-    
+{
+    FILE *pCsvFile;
+    FILE *pTextFile;
+
+    char * pi8OutputFileNameCsv = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".csv") );
+    char * pi8OutputFileNameTxt = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".txt") );
+    strcat(pi8OutputFileNameCsv,pi8OutputFileName);
+    strcat(pi8OutputFileNameCsv,".csv");
+    strcat(pi8OutputFileNameTxt,pi8OutputFileName);
+    strcat(pi8OutputFileNameTxt,".txt");
+    pCsvFile = fopen(pi8OutputFileNameCsv,"w");
+    pTextFile = fopen(pi8OutputFileNameTxt,"w");
+   
     float fTimeTaken_s = (sStopTime.tv_sec - sStartTime.tv_sec) + 
             ((float)(sStopTime.tv_usec - sStartTime.tv_usec))/1000000;
     double fDataRate_Gibps = ((i32ReceivedPacketsCount)*sizeof(struct UdpTestingPacket))
@@ -260,6 +274,7 @@ int calculate_metrics(
                 && psReceiveBuffer[i-1].sHeader.i32ClientIndex == psReceiveBuffer[i].sHeader.i32ClientIndex)
         {
             printf("Data received out of order\n");
+            fprintf(pTextFile,"Data received out of order\n");
             u8OutOfOrder = 1;
         }
 
@@ -304,6 +319,12 @@ int calculate_metrics(
         printf("Client %d Window %d Packet %ld  TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
                 psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
                 dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+        fprintf(pTextFile,"Client %d Window %d Packet %ld  TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
+                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
+                dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+        fprintf(pCsvFile,"%d,%d,%ld,%f,%f\n",
+                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
+                dTxTime, dRxTime);
 
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
@@ -313,27 +334,37 @@ int calculate_metrics(
     dAvgRxRxDiff = dAvgRxRxDiff/(i32ReceivedPacketsCount-1);
 
     printf("\n Average Time Between Packets\n");
+    fprintf(pTextFile,"\n Average Time Between Packets\n");
     printf("     |  Avg(s) |  Min(s) |  Max(s) |\n");
+    fprintf(pTextFile,"     |  Avg(s) |  Min(s) |  Max(s) |\n");
     printf("TX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgTxRxDiff,dMinTxRxDiff,dMaxTxRxDiff);
+    fprintf(pTextFile,"TX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgTxRxDiff,dMinTxRxDiff,dMaxTxRxDiff);
     printf("TX/TX|%9.6f|%9.6f|%9.6f|\n",dAvgTxTxDiff,dMinTxTxDiff,dMaxTxTxDiff);
+    fprintf(pTextFile,"TX/TX|%9.6f|%9.6f|%9.6f|\n",dAvgTxTxDiff,dMinTxTxDiff,dMaxTxTxDiff);
     printf("RX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
+    fprintf(pTextFile,"RX/RX|%9.6f|%9.6f|%9.6f|\n",dAvgRxRxDiff,dMinRxRxDiff,dMaxRxRxDiff);
     printf("\n");
+    fprintf(pTextFile,"\n");
     printf("It took %f seconds to receive %d bytes of data (%d packets)\n", 
            fTimeTaken_s,(i32ReceivedPacketsCount-1)*PACKET_SIZE_BYTES,i32ReceivedPacketsCount-1);
-    //printf("Data Rate: %f Gibps\n",fDataRate_Gibps); 
+    fprintf(pTextFile,"It took %f seconds to receive %d bytes of data (%d packets)\n", 
+           fTimeTaken_s,(i32ReceivedPacketsCount-1)*PACKET_SIZE_BYTES,i32ReceivedPacketsCount-1); 
     printf("\n");
+    fprintf(pTextFile,"\n");
 
     if(u8OutOfOrder != 0)
     {
         printf("\n");
-        printf("*********Data Received out of order - investigate this. ********");
+        printf("*********Data Received out of order - investigate this. ********\n");
         printf("\n");
+        fprintf(pTextFile,"\n*********Data Received out of order - investigate this. ********\n\n");
     }
     else
     {
         printf("\n");
         printf("Data Received in order");
         printf("\n");
+        fprintf(pTextFile,"\nData Received in order\n");
     }
 
     printf("\n");
@@ -341,12 +372,19 @@ int calculate_metrics(
             i32ReceivedPacketsCount,i32TotalSentPackets,
             (1-((double)i32ReceivedPacketsCount)/((double)i32TotalSentPackets))*100);
     printf("\n");
+    fprintf(pTextFile,"\n%d of %d packets received. Drop rate = %.2f %%\n\n",
+            i32ReceivedPacketsCount,i32TotalSentPackets,
+            (1-((double)i32ReceivedPacketsCount)/((double)i32TotalSentPackets))*100);
 
     double fDataRateAvg2_Gibps = ((double)sizeof(struct UdpTestingPacket))/dAvgTxTxDiff/1024.0/1024.0/1024.0*8;//*8 is \
     for bit to byte conversion
     printf("Data Rate According to Average Packet Tx Time Difference: %f Gibps\n",fDataRateAvg2_Gibps);
+    fprintf(pTextFile,"Data Rate According to Average Packet Tx Time Difference: %f Gibps\n",fDataRateAvg2_Gibps);
 
     printf("\n");
+
+    fclose(pCsvFile);
+    fclose(pTextFile);
 }
 
 
@@ -415,16 +453,17 @@ int parse_cmd_parameters(
                 printf("Transmit window length set to %d us.\n",*u32TransmitWindowLength_us);  
                 break;  
             case '?':
-                printf("unknown option: %c\n", optopt); 
-                break;  
+                printf("Unknown option: %c\n", optopt); 
+                return 1;
         }  
     }  
-      
+
     // optind is for the extra arguments 
     // which are not parsed 
     for(; optind < argc; optind++){      
-        printf("extra arguments: %s\n", argv[optind]);  
+        printf("extra arguments: %s\n", argv[optind]); 
+        return 1; 
     } 
-      
+
     return 0; 
 }
