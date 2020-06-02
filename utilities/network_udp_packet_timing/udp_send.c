@@ -6,8 +6,8 @@
 
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
+#include <unistd.h> //Useful functions like sleep,close and getopt
+#include <string.h>     //For memset function
 #include <sys/types.h>  //For networking
 #include <sys/socket.h> //For networking
 #include <arpa/inet.h>  //For networking

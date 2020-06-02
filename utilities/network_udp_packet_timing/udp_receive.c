@@ -2,9 +2,9 @@
 // Server side implementation of UDP client-server model 
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <unistd.h> 
-#include <string.h> 
-#include <sys/types.h> 
+#include <unistd.h> //Useful functions like sleep,close and getopt
+#include <getopt.h> //Useful functions for parsing command line parameters
+#include <string.h>     //For memset function
 #include <sys/types.h>  //For networking
 #include <sys/socket.h> //For networking
 #include <arpa/inet.h>  //For networking
@@ -13,19 +13,20 @@
 
 #include "network_packets.h"
   
-#define TRANSMIT_WINDOW_US 1000 //TODO: Command Line Parameter
-#define DEAD_TIME_US 100 //TODO: Command Line Parameter
-#define TOTAL_WINDOWS_PER_CLIENT 3 //TODO: Command Line Parameter
-#define TOTAL_CLIENTS 2 //TODO: Command Line Parameter
+#define TRANSMIT_WINDOW_US_DEFAULT 1000 //TODO: Command Line Parameter
+#define DEAD_TIME_US_DEFAULT 100 //TODO: Command Line Parameter
+#define TOTAL_WINDOWS_PER_CLIENT_DEFAULT 3 //TODO: Command Line Parameter
+#define TOTAL_CLIENTS_DEFAULT 2 //TODO: Command Line Parameter
 
 
-// int parse_cmd_parameters(
-//         int argc, 
-//         char *argv[], 
-//         uint32_t * u32TransmitWindowLength_us,
-//         uint32_t * u32DeadTime_us,
-//         uint32_t * u32TransmitWindowsperClient,
-//         uint32_t * u32TotalClients);
+int parse_cmd_parameters(
+        int argc, 
+        char *argv[],
+        char ** pi8OutputFileName,
+        uint32_t * u32TransmitWindowLength_us,
+        uint32_t * u32DeadTime_us,
+        uint32_t * u32TransmitWindowsperClient,
+        uint32_t * u32TotalClients);
 
 int calculate_metrics(
         struct timeval sStopTime, 
@@ -33,12 +34,31 @@ int calculate_metrics(
         struct UdpTestingPacket * psReceiveBuffer, 
         struct timeval * psRxTimes ,
         int i32ReceivedPacketsCount, 
-        int i32TotalSentPackets);
+        int i32TotalSentPackets,
+        char * pi8OutputFileName);
 
 // Driver code 
 int main(int argc, char *argv[]) 
 { 
-    printf("Funnel In Test Server Started\n");
+    printf("Funnel In Test Server.\n\n");
+    
+    //***** Parse command line arguments and set up initial server *****
+    uint32_t u32TransmitWindowLength_us = TRANSMIT_WINDOW_US_DEFAULT;
+    uint32_t u32DeadTime_us = DEAD_TIME_US_DEFAULT;
+    uint32_t u32TransmitWindowsperClient = TOTAL_WINDOWS_PER_CLIENT_DEFAULT;
+    uint32_t u32TotalClients = TOTAL_CLIENTS_DEFAULT;
+    char * pu8OutputFileName = "FunnelInTesting";
+    
+    //*pu8OutputFileName="temp";
+
+    //printf("%s\n",pu8OutputFileName);
+
+    int iRet = parse_cmd_parameters(argc, argv, &pu8OutputFileName, &u32TransmitWindowLength_us, 
+            &u32DeadTime_us, &u32TransmitWindowsperClient, &u32TotalClients);
+    if(iRet != 0){
+        return 0;
+    }
+    
     int iSocketFileDescriptor; 
     struct sockaddr_in sServAddr, sCliAddr; 
 
@@ -74,16 +94,16 @@ int main(int argc, char *argv[])
     iSockAddressLength = sizeof(sCliAddr);
 
     //Loop is here so that we can perform multiple tests.
-    for (size_t k = 0; k < TOTAL_CLIENTS; k++)
+    for (size_t k = 0; k < u32TotalClients; k++)
     {
         
         //***** Waiting for initial hello messages from clients *****
-        struct sockaddr_in psCliAddrInit[TOTAL_CLIENTS];
-        memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*TOTAL_CLIENTS);
-        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+        struct sockaddr_in * psCliAddrInit = malloc(u32TotalClients*sizeof(struct sockaddr_in));
+        memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*u32TotalClients);
+        for (size_t i = 0; i < u32TotalClients; i++)
         {
             
-            printf("Waiting For Hello Message From Client %ld of %d\n",i+1,TOTAL_CLIENTS);
+            printf("Waiting For Hello Message From Client %ld of %d\n",i+1,u32TotalClients);
             struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
 
             while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
@@ -104,17 +124,17 @@ int main(int argc, char *argv[])
         struct timeval sCurrentTime;
         gettimeofday(&sCurrentTime,NULL);
 
-        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+        for (size_t i = 0; i < u32TotalClients; i++)
         {
             struct MetadataPacketMaster sConfigurationPacket;
             sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
             sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
-            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (TRANSMIT_WINDOW_US + DEAD_TIME_US);
+            sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (u32TransmitWindowLength_us + u32DeadTime_us);
             sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
-            sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = TRANSMIT_WINDOW_US;
-            sConfigurationPacket.i32DeadTime_us = DEAD_TIME_US;
-            sConfigurationPacket.uNumberOfRepeats = TOTAL_WINDOWS_PER_CLIENT;
-            sConfigurationPacket.uNumClients = TOTAL_CLIENTS;
+            sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = u32TransmitWindowLength_us;
+            sConfigurationPacket.i32DeadTime_us = u32DeadTime_us;
+            sConfigurationPacket.uNumberOfRepeats = u32TransmitWindowsperClient;
+            sConfigurationPacket.uNumClients = u32TotalClients;
             sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
             sConfigurationPacket.i32ClientIndex = i;
 
@@ -127,10 +147,10 @@ int main(int argc, char *argv[])
         
 
         //***** Wait For Data stream messages from client *****
-        uint8_t * pu8TrailingPacketReceived = (uint8_t*) malloc(TOTAL_CLIENTS*sizeof(uint8_t));
-        memset(pu8TrailingPacketReceived,0,TOTAL_CLIENTS*sizeof(uint8_t));
-        int * piTotalSentPacketsPerClient = (int *) malloc(TOTAL_CLIENTS*sizeof(int));
-        memset(piTotalSentPacketsPerClient,0,TOTAL_CLIENTS*sizeof(int));
+        uint8_t * pu8TrailingPacketReceived = (uint8_t*) malloc(u32TotalClients*sizeof(uint8_t));
+        memset(pu8TrailingPacketReceived,0,u32TotalClients*sizeof(uint8_t));
+        int * piTotalSentPacketsPerClient = (int *) malloc(u32TotalClients*sizeof(int));
+        memset(piTotalSentPacketsPerClient,0,u32TotalClients*sizeof(int));
         
 
         printf("Waiting for stream\n");
@@ -160,7 +180,7 @@ int main(int argc, char *argv[])
                         psReceiveBuffer[i32ReceivedPacketsCount].sHeader.i32ClientIndex);
                 
                 uint8_t u8End = 1;
-                for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+                for (size_t i = 0; i < u32TotalClients; i++)
                 {
                     if(pu8TrailingPacketReceived[i] == 0){
                         u8End = 0;
@@ -184,20 +204,21 @@ int main(int argc, char *argv[])
 
         printf("All Messages Received\n");
         int iTotalSentPackets = 0;
-        for (size_t i = 0; i < TOTAL_CLIENTS; i++)
+        for (size_t i = 0; i < u32TotalClients; i++)
         {
             iTotalSentPackets += piTotalSentPacketsPerClient[i];
         }
         
         sStopTime = psRxTimes[i32ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
-        getting system time here as trailing packets can take quite a while to arrive
+        getting system time here as trailing packets can take quite a while to arrive.
 
         //***** Analyse data, and calculate and display performance metrics *****
-        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,iTotalSentPackets);
+        calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,psRxTimes,i32ReceivedPacketsCount,iTotalSentPackets,pu8OutputFileName);
 
         //Per for loop cleanup
         free(pu8TrailingPacketReceived);
         free(piTotalSentPacketsPerClient);
+        free(psCliAddrInit);
     }
 
     //Cleanup
@@ -214,7 +235,8 @@ int calculate_metrics(
         struct UdpTestingPacket * psReceiveBuffer, 
         struct timeval * psRxTimes, 
         int i32ReceivedPacketsCount, 
-        int i32TotalSentPackets)
+        int i32TotalSentPackets,
+        char * pi8OutputFileName)
     {
     
     float fTimeTaken_s = (sStopTime.tv_sec - sStartTime.tv_sec) + 
@@ -325,4 +347,84 @@ int calculate_metrics(
     printf("Data Rate According to Average Packet Tx Time Difference: %f Gibps\n",fDataRateAvg2_Gibps);
 
     printf("\n");
+}
+
+
+int parse_cmd_parameters(
+        int argc, 
+        char * argv[], 
+        char ** pi8OutputFileName,
+        uint32_t * u32TransmitWindowLength_us,
+        uint32_t * u32DeadTime_us,
+        uint32_t * u32TransmitWindowsperClient,
+        uint32_t * u32TotalClients)
+{
+    int opt; 
+      
+    // put ':' in the starting of the 
+    // string so that program can  
+    //distinguish between '?' and ':'  
+    while((opt = getopt(argc, argv, ":t:d:hn:o:w:")) != -1)  
+    {  
+        switch(opt)  
+        {  
+            case 'h':  
+                printf(
+                    "Program for testing network performance when scheduling packet sending across multiple "
+                    "transmitters at specific time intervals.\n\n");
+                    
+                printf(
+                    "This program creates the main receiving server. The udp_send program will create a "
+                    "transmitter client that will connect to this server. All configuration information from this "
+                    "program will be sent to the client.\n\n");
+
+                printf(
+                    "There will be NUM_TRANSMITTERS clients. Each tranmsitter will  transmit data for a specific "
+                    "WINDOW_LENGTH in microseconds. Each client will transmit while the others wait. There will be "
+                    "NUM_WINDOWS interleaved windows for each client. Between each transfer window there will be "
+                    "DEAD_TIME microseconds where no client sends data.\n\n");
+
+                printf("Options:\n");
+                printf("    -d DEAD_TIME          The amount of dead time between windows.\n");
+                printf("    -h                    Print this message and exit.\n");
+                printf("    -n NUM_WINDOWS        The number of windows each client will transmit.\n");
+                printf("    -o FILE               Write results to FILE.\n");
+                printf("    -t NUM_TRANSMITTERS   The number of clients that will transmit to the host.\n");
+                printf("    -w WINDOW_LENGTH      The length of a window in microseconds.\n");
+                
+                return 1;
+
+            case 'd': 
+                *u32DeadTime_us = atoi(optarg);
+                printf("Deadtime set to %d us.\n",*u32DeadTime_us); 
+                break;
+            case 'n':  
+                *u32TransmitWindowsperClient = atoi(optarg);
+                printf("Each client will transmit %d windows.\n",*u32TransmitWindowsperClient);    
+                break;  
+            case 'o':  
+                *pi8OutputFileName = optarg;
+                printf("Output File name set to %s\n",*pi8OutputFileName); 
+                break;  
+            case 't':
+                *u32TotalClients = atoi(optarg);
+                printf("Number of transmitters set to %d\n",*u32TotalClients);  
+                break;  
+            case 'w':
+                *u32TransmitWindowLength_us = atoi(optarg);
+                printf("Transmit window length set to %d us.\n",*u32TransmitWindowLength_us);  
+                break;  
+            case '?':
+                printf("unknown option: %c\n", optopt); 
+                break;  
+        }  
+    }  
+      
+    // optind is for the extra arguments 
+    // which are not parsed 
+    for(; optind < argc; optind++){      
+        printf("extra arguments: %s\n", argv[optind]);  
+    } 
+      
+    return 0; 
 }
