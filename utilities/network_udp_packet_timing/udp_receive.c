@@ -2,21 +2,21 @@
 // Server side implementation of UDP client-server model 
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <unistd.h> //Useful functions like sleep,close and getopt
-#include <getopt.h> //Useful functions for parsing command line parameters
+#include <unistd.h>     //Useful functions like sleep,close and getopt
+#include <getopt.h>     //Useful functions for parsing command line parameters
 #include <string.h>     //For memset function
 #include <sys/types.h>  //For networking
 #include <sys/socket.h> //For networking
 #include <arpa/inet.h>  //For networking
-#include <netinet/in.h>  //For networking
-#include <sys/time.h> //For timing functions
+#include <netinet/in.h> //For networking
+#include <sys/time.h>   //For timing functions
 
 #include "network_packets.h"
   
-#define TRANSMIT_WINDOW_US_DEFAULT 1000 //TODO: Command Line Parameter
-#define DEAD_TIME_US_DEFAULT 100 //TODO: Command Line Parameter
-#define TOTAL_WINDOWS_PER_CLIENT_DEFAULT 3 //TODO: Command Line Parameter
-#define TOTAL_CLIENTS_DEFAULT 2 //TODO: Command Line Parameter
+#define TRANSMIT_WINDOW_US_DEFAULT 1000 
+#define DEAD_TIME_US_DEFAULT 100 
+#define TOTAL_WINDOWS_PER_CLIENT_DEFAULT 3 
+#define TOTAL_CLIENTS_DEFAULT 2 
 
 
 int parse_cmd_parameters(
@@ -316,15 +316,17 @@ int calculate_metrics(
             dMaxTxTxDiff = dDiffTxTx;
         }
 
-        printf("Client %d Window %d Packet %ld  TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
-                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
-                dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
-        fprintf(pTextFile,"Client %d Window %d Packet %ld  TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, Diff RX/RX %fs\n",
-                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
-                dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
-        fprintf(pCsvFile,"%d,%d,%ld,%f,%f\n",
-                psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, i,
-                dTxTime, dRxTime);
+        printf("Packet %ld Client %d Window %d Client Packet ID %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, \
+                Diff RX/RX %fs\n",
+                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, 
+                psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+        fprintf(pTextFile,"Packet %ld Client %d Window %d Client Packet ID %d TX %fs, RX %fs, Diff RX/TX %fs, \
+                Diff TX/TX %fs, Diff RX/RX %fs\n",
+                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, 
+                psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+        fprintf(pCsvFile,"%ld,%d,%d,%d,%f,%f\n",
+                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,
+                psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime);
 
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
