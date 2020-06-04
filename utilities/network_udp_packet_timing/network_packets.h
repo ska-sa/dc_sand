@@ -9,7 +9,7 @@
 #define UDP_TEST_PORT       8081
 
 //Number of packets to be sent in a stream. TODO: Replace with a configurable command line parameter.
-#define MAXIMUM_NUMBER_OF_PACKETS   100000
+#define MAXIMUM_NUMBER_OF_PACKETS   5000000
 
 //Metadata Packet Client Codes
 #define CLIENT_MESSAGE_EMPTY 0

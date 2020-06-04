@@ -16,8 +16,8 @@
 
 #include "network_packets.h"
 
-#define SERVER_ADDRESS  "10.100.101.1"//TODO: Make a parameter
-#define LOCAL_ADDRESS  "127.0.0.1"//TODO: Make default value when now paramter is provided.
+#define SERVER_ADDRESS  "10.100.18.14"//TODO: Make a parameter
+#define LOCAL_ADDRESS   "127.0.0.1"//TODO: Make default value when now paramter is provided.
   
 // Driver code 
 int main() 
@@ -26,8 +26,8 @@ int main()
     struct sockaddr_in     sServAddr; 
 
     //***** Create sample data to be sent *****
-    int iMaximumTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
-    struct UdpTestingPacket * psSendBuffer = malloc(iMaximumTransmitBytes);
+    size_t ulMaximumTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
+    struct UdpTestingPacket * psSendBuffer = malloc(ulMaximumTransmitBytes);
     for (size_t i = 0; i < MAXIMUM_NUMBER_OF_PACKETS; i++)
     {
         psSendBuffer[i].sHeader.i32PacketIndex = i;
@@ -47,7 +47,7 @@ int main()
     // Filling server information 
     sServAddr.sin_family = AF_INET; 
     sServAddr.sin_port = htons(UDP_TEST_PORT);
-    sServAddr.sin_addr.s_addr = inet_addr(LOCAL_ADDRESS);
+    sServAddr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);
       
     int iReceivedBytes, iSockAddressLength; 
 

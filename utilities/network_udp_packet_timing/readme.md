@@ -25,6 +25,9 @@ The following are useful commands when looking at C-states:
 
 C-states can be disabled in system bios.
 
+## Process Priority
+`sudo nice -n -5 ./udp_send`
+
 ## Additional Reading
 Here is a [link](https://access.redhat.com/sites/default/files/attachments/20150325_network_performance_tuning.pdf) to a useful guide on tuning network performance. It provides details the reasons for most of the above \
 commands.
