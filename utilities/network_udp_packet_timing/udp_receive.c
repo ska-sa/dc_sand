@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
                     u8Duplicate = 1;
                 }
                 //printf("%d %d\n",psCliAddrInit[i].sin_addr.s_addr,psCliAddrInit[j].sin_addr.s_addr);
-            }            
+            }
         }
         printf("Hello Message Received from client %ld\n",i+1);
     }
