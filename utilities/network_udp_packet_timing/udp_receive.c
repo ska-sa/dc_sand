@@ -104,14 +104,25 @@ int main(int argc, char *argv[])
         
         printf("Waiting For Hello Message From Client %ld of %d\n",i+1,u32TotalClients);
         struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_EMPTY,0};
+        uint8_t u8Duplicate = 1;
 
-        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO)
+        while(sHelloPacket.u32MetadataPacketCode != CLIENT_MESSAGE_HELLO || u8Duplicate != 0)
         {
             iReceivedBytes = recvfrom(iSocketFileDescriptor, (struct MetadataPacketClient *)&sHelloPacket, 
                         sizeof(struct MetadataPacketClient),  
                         MSG_WAITALL, ( struct sockaddr *) &psCliAddrInit[i], 
                         &iSockAddressLength); 
             printf("Message Received\n");
+            //Check that the message has not been received from a server that already exists
+            u8Duplicate = 0;
+            for (size_t j = 0; j < i; j++)
+            {
+                if(psCliAddrInit[i].sin_addr.s_addr == psCliAddrInit[j].sin_addr.s_addr){
+                    printf("Hello message Already received from client with this address\n");
+                    u8Duplicate = 1;
+                }
+                //printf("%d %d\n",psCliAddrInit[i].sin_addr.s_addr,psCliAddrInit[j].sin_addr.s_addr);
+            }            
         }
         printf("Hello Message Received from client %ld\n",i+1);
     }
@@ -125,7 +136,7 @@ int main(int argc, char *argv[])
     {
         struct MetadataPacketMaster sConfigurationPacket;
         sConfigurationPacket.u32MetadataPacketCode = SERVER_MESSAGE_CONFIGURATION;
-        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 1;
+        sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec = sCurrentTime.tv_sec + 3;
         sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec = i * (u32TransmitWindowLength_us + 
                 u32DeadTime_us);
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;

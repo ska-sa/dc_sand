@@ -51,30 +51,37 @@ int main()
       
     int iReceivedBytes, iSockAddressLength; 
 
-    //***** Send Initial Message To Server *****
+    //***** Send Initial Message To Server and receive response*****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
-    sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, 
-        sizeof(struct MetadataPacketClient), 
-        MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
-             sizeof(sServAddr)); 
-    printf("Hello message sent.\n"); 
-
-    //**** Wait For Response from Server with Configuration Information
     struct MetadataPacketMaster sConfigurationPacket;
-    iReceivedBytes = recvfrom(iSocketFileDescriptor, (struct MetadataPacketMaster *)&sConfigurationPacket, 
-                sizeof(struct MetadataPacketMaster),  
-                MSG_WAITALL, (struct sockaddr *) &sServAddr, 
-                &iSockAddressLength);
+    int iMessagesSent=0;
+    while(1){
+        sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, 
+            sizeof(struct MetadataPacketClient), 
+            MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
+                sizeof(sServAddr)); 
+        
+        printf("%d Hello message sent.\n",iMessagesSent++); 
+        sleep(1);
+    
+        
+        iReceivedBytes = recvfrom(iSocketFileDescriptor, (struct MetadataPacketMaster *)&sConfigurationPacket, 
+                    sizeof(struct MetadataPacketMaster),  
+                    MSG_DONTWAIT, (struct sockaddr *) &sServAddr, 
+                    &iSockAddressLength);
+        
+        if(iReceivedBytes != -1){
+            break;
+        }
+    }
+
+    //**** Parse Response from Server with Configuration Information
     if(sConfigurationPacket.u32MetadataPacketCode != SERVER_MESSAGE_CONFIGURATION)
     {
         printf("ERROR: Unexpected Message received from server\n");
         return 1;
     }
     printf("Configuration Message Received from Server\n");
-
-    //***** Wait until the time specified by the server before streaming - this has to be repeated over a number of \
-        windows *****
-    printf("Waiting Until Specified Time To Transmit Data\n");
     int iNumWindows = sConfigurationPacket.uNumberOfRepeats;
 
     struct timeval * psStopTime = malloc(sizeof(struct timeval)*iNumWindows);
@@ -87,6 +94,7 @@ int main()
     double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
     //("%f\n",dTimeBetweenWindows);
 
+    printf("Waiting Until Specified Time To Transmit Data\n");
     for (size_t i = 0; i < iNumWindows; i++)
     {
         double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
