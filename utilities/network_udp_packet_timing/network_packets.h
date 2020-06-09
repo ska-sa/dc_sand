@@ -11,11 +11,11 @@
 //Number of packets to be sent in a stream. TODO: Replace with a configurable command line parameter.
 #define MAXIMUM_NUMBER_OF_PACKETS   5000000
 
-//Metadata Packet Client Codes
+//Metadata packet client codes to fill in MetadataPacketClient.u32MetadataPacketCode
 #define CLIENT_MESSAGE_EMPTY 0
 #define CLIENT_MESSAGE_HELLO 1
 
-//Metadata Packet Server Codes
+//Metadata packet server codes to fill in MetadataPacketMaster.u32MetadataPacketCode
 #define SERVER_MESSAGE_CONFIGURATION 2
 
 /** Struct that stores \ref UdpTestingPacket metadata. The header struct is seperate from the packet struct as this 
@@ -61,9 +61,10 @@ struct MetadataPacketMaster{
     int32_t i32DeadTime_us; //The amount of space between clients where no data is being transferred
 };
 
-/** Metadata packet that will be transmitted out of band from the client to the server for configuring the test
+/** Metadata packet that will be transmitted out of band from the client to the server for configuring the test. At the
+ * moment nothing useful is transmitted, however this struct can easily be extended.
  */
 struct MetadataPacketClient{
     uint32_t u32MetadataPacketCode; //Code specifying the type of metadata within the packet
-    float fTransmitTimeClient_ms;
+    float fTransmitTimeClient_ms; //Not used currently
 };

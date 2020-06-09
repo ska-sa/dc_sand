@@ -1,18 +1,29 @@
+/**
+ * @file    udp_send.c
+ *
+ * @brief   File that streams UDP data to a central server 
+ * 
+ * This client transmits according to infromation received from a server. See \ref udp_receive.c for more information.
+ *  
+ * @author  Gareth Callanan
+ *          South African Radio Astronomy Observatory(SARAO)
+ */
 
-// Client side implementation of UDP client-server model 
 
-
-#define _GNU_SOURCE //This gives access to the GNU source, specifically needed for the sendmmsg function
+/* _GNU_SOURCE gives access to the GNU source, specifically needed for the sendmmsg function. sendmmsg has not yet been 
+ * implemented.
+ */
+#define _GNU_SOURCE     
 
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <unistd.h> //Useful functions like sleep,close and getopt
+#include <unistd.h>     //Useful functions like sleep,close and getopt
 #include <string.h>     //For memset function
 #include <sys/types.h>  //For networking
 #include <sys/socket.h> //For networking
 #include <arpa/inet.h>  //For networking
-#include <netinet/in.h>  //For networking
-#include <sys/time.h> //For timing functions
+#include <netinet/in.h> //For networking
+#include <sys/time.h>   //For timing functions
 
 #include "network_packets.h"
 
@@ -25,7 +36,7 @@ int main()
     int iSocketFileDescriptor; 
     struct sockaddr_in     sServAddr; 
 
-    //***** Create sample data to be sent *****
+    //1. ***** Create sample data to be sent *****
     size_t ulMaximumTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psSendBuffer = malloc(ulMaximumTransmitBytes);
     for (size_t i = 0; i < MAXIMUM_NUMBER_OF_PACKETS; i++)
@@ -35,7 +46,7 @@ int main()
     }
     
   
-    //***** Creating socket file descriptor *****
+    //2. ***** Creating socket file descriptor *****
     if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
     { 
         perror("socket creation failed"); 
@@ -51,7 +62,7 @@ int main()
       
     int iReceivedBytes, iSockAddressLength; 
 
-    //***** Send Initial Message To Server and receive response*****
+    //3. ***** Send Initial Message To Server and receive response*****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
     struct MetadataPacketMaster sConfigurationPacket;
     int iMessagesSent=0;
@@ -75,7 +86,7 @@ int main()
         }
     }
 
-    //**** Parse Response from Server with Configuration Information
+    //4. ***** Parse Response from Server with Configuration Information *****
     if(sConfigurationPacket.u32MetadataPacketCode != SERVER_MESSAGE_CONFIGURATION)
     {
         printf("ERROR: Unexpected Message received from server\n");
@@ -92,39 +103,38 @@ int main()
     double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
             ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
     double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
-    //("%f\n",dTimeBetweenWindows);
+
 
     printf("Waiting Until Specified Time To Transmit Data\n");
+    //5. ***** Stream data to server - a number of windows have to be transferred *****
     for (size_t i = 0; i < iNumWindows; i++)
     {
+        //5.1 ***** Determine the time to wait until before transmitting current window. *****
         double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
                 ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
         dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*i*sConfigurationPacket.uNumClients;
+
+        //5.2 ***** Wait until determined time. *****
         double dCurrentTime_s = 0;
         do
         {
             gettimeofday(&psStartTime[i], NULL);
             dCurrentTime_s = psStartTime[i].tv_sec + ((double)psStartTime[i].tv_usec)/1000000.0;
         } while(dTimeToStart_s > dCurrentTime_s);
-        
-        //printf("Window %d: %f\n",i,dTimeToStart_s);
-        
-        //***** Stream data to server *****
-        //This has to take place on a number of occasions
+
+        //5.3 ***** Transmit data contionusly for the entire window period. *****
         piNumberOfPacketsSentPerWindow[i] = 0;
         double dTransmittedTime_s = 0;
         double dEndTime = dTimeToStart_s + dWindowTransmitTime;
-        //printf("%f %f %f\n",dEndTime,dTimeToStart_s,dWindowTransmitTime);
         do
         {
             gettimeofday(&psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime, NULL);
+            //Fill in packet header data before transmitting
             psSendBuffer[iNumPacketsSentTotal].sHeader.i32TransmitWindowIndex = i;
             psSendBuffer[iNumPacketsSentTotal].sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
 
             dTransmittedTime_s = (double)psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_sec + \
                     ((double)(psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_usec))/1000000.0;
-
-            //printf("%d %d \n",iNumPacketsSentTotal,psSendBuffer[iNumPacketsSentTotal].sHeader.i32TrailingPacket);
 
             int temp = sendto(iSocketFileDescriptor, (const char *)&psSendBuffer[iNumPacketsSentTotal], 
                     sizeof(struct UdpTestingPacket), 
@@ -137,28 +147,17 @@ int main()
                 printf("Error Transmitting Data: %d",temp);
                 return 1;
             }
-            //printf("Sent Packet %ld %d.\n",i,temp); 
         }while(dTransmittedTime_s < dEndTime);
 
         gettimeofday(&psStopTime[i], NULL);
     }
 
+
+    /*  6 ***** When stream is complete, wait for a length of time specified by the server and then transmit trailing 
+     *  packets. These tell the server that the transfer is complete. They are transmitted a number of times as UDP is 
+     *  unreliable *****
+     */
     sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
-    for (size_t i = 0; i < iNumWindows; i++)
-    {
-        double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + 
-                ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
-        int iTotalTransmitBytes = piNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
-        double dDataRate_Gibps = ((double)iTotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
-        printf("Window %ld\n",i);
-        printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", 
-                dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
-        printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
-    }
-
-
-
-    //***** Send Trailing Packets to stop server polling the receive socket *****;
     printf("Transmitting Trailing Packets to server\n");
     struct UdpTestingPacket sTrailingPacket;
     sTrailingPacket.sHeader.i32TrailingPacket = 1;
@@ -176,6 +175,20 @@ int main()
             return 1;
         }
     }
+
+    //7 ***** Print out some useful diagnostic information *****
+    for (size_t i = 0; i < iNumWindows; i++)
+    {
+        double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + 
+                ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
+        int iTotalTransmitBytes = piNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
+        double dDataRate_Gibps = ((double)iTotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
+        printf("Window %ld\n",i);
+        printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", 
+                dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
+        printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
+    }
+
     printf("Program Done\n");
  
     free(psStopTime);

@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# @file     timed_stress_tests.sh
+#
+# @brief    Script that runs minute long network tests every 30 minutes to measure how the performance changes at 
+#           different periods of time. Clients must be running the \ref repeat_send.sh scripts.
+#
+# @author   Gareth Callanan
+#           South African Radio Astronomy Observatory(SARAO)
 
 window_length_us=5000
 clients=3

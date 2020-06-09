@@ -1,5 +1,24 @@
+/**
+ * @file    udp_receive.c
+ *
+ * @brief   File that receives UDP data from multiple client for the purposes of testing network packet scheduling 
+ *          accuracy.
+ * 
+ * This server receives streams of data from multiple clients(See \ref udp_send.c). The data is transmitted to the 
+ * server in predefined windows in order to maximise line rate and reduce packet overlap between clients. All 
+ * configuration is specified in this server. The server upon receiveing a request from a client will transfer its 
+ * configuration implementation to the client. This allows all clients to be synchronised. 
+ * 
+ * Each client transmits for a specific window in time. The windows between clients are interleaved. The clients 
+ * transmit a certain number of windows. The window length, number of windows and dead time between windows are all
+ * specified by the user on program launch.
+ * 
+ * The received packet metadata is written to file for analysis by seperate scripts. 
+ *
+ * @author  Gareth Callanan
+ *          South African Radio Astronomy Observatory(SARAO)
+ */
 
-// Server side implementation of UDP client-server model 
 #include <stdio.h> 
 #include <stdlib.h> 
 #include <unistd.h>     //Useful functions like sleep,close and getopt
@@ -12,13 +31,32 @@
 #include <sys/time.h>   //For timing functions
 
 #include "network_packets.h"
-  
+
+//Default values in case command line parameters are not given
 #define TRANSMIT_WINDOW_US_DEFAULT 1000 
 #define DEAD_TIME_US_DEFAULT 100 
 #define TOTAL_WINDOWS_PER_CLIENT_DEFAULT 3 
 #define TOTAL_CLIENTS_DEFAULT 2 
+#define DONT_PRINT_TO_TERMINAL_DEFAULT 0
+#define FILE_NAME_DEFAULT "FunnelInTesting"
 
-
+/** \brief Function that parses all command line arguments
+ *  
+ *  \param[in]  argc                            Value passed into main() indicating the number of command line 
+ *                                              parameters passed into the program.
+ *  \param[in]  argv                            Array of strings passed into main() containing the different command 
+ *                                              line parameters.
+ *                              
+ *  \param[out] pi8OutputFileName               Name of the file to write to.
+ *  \param[out] u32TransmitWindowLength_us      Window length in microseconds.
+ *  \param[out] u32DeadTime_us                  Deadtime between windows in microseconds.
+ *  \param[out] u32TransmitWindowsperClient     The number of windows that each client must transmit.
+ *  \param[out] u32TotalClients                 The number of transmitter clients that connect to this receiver server.
+ *  \param[out] u8NoTerminal                    If 1 indicates that the program must disable printing window information
+ *                                              to the terminal.
+ * 
+ *  \return Returns 1 if the program must exit, 0 otherwise.
+ */
 int parse_cmd_parameters(
         int argc, 
         char *argv[],
@@ -29,7 +67,22 @@ int parse_cmd_parameters(
         uint32_t * u32TotalClients,
         uint8_t * u8NoTerminal);
 
-int calculate_metrics(
+/** \brief Function that takes calculates metrics based on the received packets and writes it to file.
+ *  
+ *  \param[in] sStopTime 
+ *  \param[in] sStartTime                       Time the very first packet out of all windows and clients was received.
+ *  \param[in] psReceiveBuffer                  Pointer to array containing received packets.
+ *  \param[in] psRxTimes                        Pointer to array containing the times the packets in 
+ *                                              \ref psReceiveBuffer were received.
+ *  \param[in] pi8OutputFileName                Name of the file to write to.
+ *  \param[in] u32TransmitWindowLength_us       Window length in microseconds.
+ *  \param[in] u32DeadTime_us                   Deadtime between windows in microseconds.
+ *  \param[in] u32TransmitWindowsperClient      The number of windows that each client must transmit.
+ *  \param[in] u32TotalClients                  The number of transmitter clients that connect to this receiver server.
+ *  \param[in] u8NoTerminal                     If 1 indicates that the program must disable printing window information
+ *                                              to the terminal.
+ */
+void calculate_metrics(
         struct timeval sStopTime, 
         struct timeval sStartTime, 
         struct UdpTestingPacket * psReceiveBuffer, 
@@ -44,17 +97,13 @@ int main(int argc, char *argv[])
 { 
     printf("Funnel In Test Server.\n\n");
     
-    //***** Parse command line arguments and set up initial server *****
+    //1. ***** Parse command line arguments and set up initial server *****
     uint32_t u32TransmitWindowLength_us = TRANSMIT_WINDOW_US_DEFAULT;
     uint32_t u32DeadTime_us = DEAD_TIME_US_DEFAULT;
     uint32_t u32TransmitWindowsperClient = TOTAL_WINDOWS_PER_CLIENT_DEFAULT;
     uint32_t u32TotalClients = TOTAL_CLIENTS_DEFAULT;
-    uint8_t  u8NoTerminal = 0; 
-    char * pu8OutputFileName = "FunnelInTesting";
-    
-    //*pu8OutputFileName="temp";
-
-    //printf("%s\n",pu8OutputFileName);
+    uint8_t  u8NoTerminal = DONT_PRINT_TO_TERMINAL_DEFAULT; 
+    char * pu8OutputFileName = FILE_NAME_DEFAULT;
 
     int iRet = parse_cmd_parameters(argc, argv, &pu8OutputFileName, &u32TransmitWindowLength_us, 
             &u32DeadTime_us, &u32TransmitWindowsperClient, &u32TotalClients, &u8NoTerminal);
@@ -70,7 +119,7 @@ int main(int argc, char *argv[])
     struct UdpTestingPacket * psReceiveBuffer = malloc(ulTotalTransmitBytes);
     struct timeval * psRxTimes = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket));
     
-    //***** Creating socket file descriptor *****
+    //2. ***** Creating socket file descriptor *****
     if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
     { 
         perror("socket creation failed"); 
@@ -96,7 +145,7 @@ int main(int argc, char *argv[])
     int iSockAddressLength, iReceivedBytes; 
     iSockAddressLength = sizeof(sCliAddr);
   
-    //***** Waiting for initial hello messages from clients *****
+    //3. ***** Waiting for initial hello messages from clients *****
     struct sockaddr_in * psCliAddrInit = malloc(u32TotalClients*sizeof(struct sockaddr_in));
     memset(psCliAddrInit, 0, sizeof(struct sockaddr_in)*u32TotalClients);
     for (size_t i = 0; i < u32TotalClients; i++)
@@ -127,7 +176,7 @@ int main(int argc, char *argv[])
         printf("Hello Message Received from client %ld\n",i+1);
     }
         
-    //***** Determine and send Configuration Information to client *****
+    //4. ***** Determine and send Configuration Information to clients *****
     printf("Sending Configuration Message to client\n");
     struct timeval sCurrentTime;
     gettimeofday(&sCurrentTime,NULL);
@@ -155,14 +204,14 @@ int main(int argc, char *argv[])
     
     
 
-    //***** Wait For Data stream messages from client *****
+    //5. ***** Receive data stream messages from client *****
     uint8_t * pu8TrailingPacketReceived = (uint8_t*) malloc(u32TotalClients*sizeof(uint8_t));
     memset(pu8TrailingPacketReceived,0,u32TotalClients*sizeof(uint8_t));
     int * piTotalSentPacketsPerClient = (int *) malloc(u32TotalClients*sizeof(int));
     memset(piTotalSentPacketsPerClient,0,u32TotalClients*sizeof(int));
     
 
-    printf("Waiting for stream\n");
+    printf("Starting Streaming\n");
     int64_t i64ReceivedPacketsCount = 0;
     struct timeval sStopTime, sStartTime;
     gettimeofday(&sStartTime, NULL);
@@ -208,11 +257,16 @@ int main(int argc, char *argv[])
         {
             gettimeofday(&sStartTime, NULL);
         }
+
+        //Write the received time to the last received packet.
         gettimeofday(&psRxTimes[i64ReceivedPacketsCount], NULL);
+
         i64ReceivedPacketsCount++;//Not counted in the case of a trailing packet
     }
 
     printf("All Messages Received\n");
+
+    //Calculate the total number of packets received by adding the number of packets transmitted by each client together.
     int64_t i64TotalSentPackets = 0;
     for (size_t i = 0; i < u32TotalClients; i++)
     {
@@ -222,16 +276,14 @@ int main(int argc, char *argv[])
     sStopTime = psRxTimes[i64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
     getting system time here as trailing packets can take quite a while to arrive.
 
-    //***** Analyse data, and calculate and display performance metrics *****
+    //6. ***** Analyse data, and calculate and display performance metrics *****
     calculate_metrics(sStopTime,sStartTime,psReceiveBuffer,
             psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
 
-    //Per for loop cleanup
+    //Cleanup
     free(pu8TrailingPacketReceived);
     free(piTotalSentPacketsPerClient);
     free(psCliAddrInit);
-
-    //Cleanup
     free(psReceiveBuffer);
     free(psRxTimes);
     close(iSocketFileDescriptor);
@@ -239,7 +291,7 @@ int main(int argc, char *argv[])
     return 0;
 } 
 
-int calculate_metrics(
+void calculate_metrics(
         struct timeval sStopTime, 
         struct timeval sStartTime, 
         struct UdpTestingPacket * psReceiveBuffer, 
@@ -484,5 +536,5 @@ int parse_cmd_parameters(
         return 1; 
     } 
 
-    return 0; 
+    return 0;
 }
