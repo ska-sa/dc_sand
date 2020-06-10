@@ -27,7 +27,7 @@
 
 #include "network_packets.h"
 
-#define SERVER_ADDRESS  "10.100.18.14"//TODO: Make a parameter
+#define SERVER_ADDRESS  "10.100.101.1"//TODO: Make a parameter
 #define LOCAL_ADDRESS   "127.0.0.1"//TODO: Make default value when now paramter is provided.
   
 // Driver code 

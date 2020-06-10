@@ -21,12 +21,24 @@ runs at maximum performance and power with higher numbers indicating that the CP
 
 The following are useful commands when looking at C-states:
 1. `cat /sys/module/intel_idle/parameters/max_cstate` - View the maximum system c-state.
-3. `sudo powertop` - Detailed system power consumption and C-state levels can be monitored using the [powertop](https://01.org/powertop) utility.
+2. `sudo powertop` - Detailed system power consumption and C-state levels can be monitored using the [powertop](https://01.org/powertop) utility.
 
 C-states can be disabled in system bios.
 
 ## Process Priority
-`sudo nice -n -5 ./udp_send`
+`sudo nice -n -5 ./udp_send` (lower value is higher priority)
+
+`sudo chrt 50 numactl -C 0 -m 0 ./udp_send` (Higher value is higher priority)
+
+## NTP 
+1. Install NTP if it is not installed : `sudo apt-get install ntp`.
+2. View the ntp servers that are connected: `ntpq -p`. The ip address with the "*" next to it is the one that the server
+is using to set its time.
+3. Go to the ntp configuration `/etc/ntp.conf` file and add the following line: `server ntp.kat.ac.za iburst`. This line
+adds the local ntp server to the list of available servers. Removing the other servers will force your server to sync to 
+that one server.
+4. Restart the ntp server: `sudo service ntp restart`. Run `ntpq -p` to confirm that the server now appears in the list 
+of available NTP servers and that it has a "*" next to it indicating the time
 
 ## Additional Reading
 Here is a [link](https://access.redhat.com/sites/default/files/attachments/20150325_network_performance_tuning.pdf) to a useful guide on tuning network performance. It provides details the reasons for most of the above \
