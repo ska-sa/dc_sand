@@ -17,5 +17,5 @@ num_tests=10
 for i in $deadtime_values_us
 do  
     echo "Look at this value $i $window_length_us"
-    sudo chrt 50 numactl -N 0 -C 0 ./udp_receive -t ${clients} -n ${num_tests} -d $i -w ${window_length_us} -o DelayTest_N${num_tests}_W${window_length_us}_D${i}_T${clients} -p
+    sudo LD_PRELOAD=libvma.so VMA-SELECT-POLL=-1 VMA_THREAD_MODE=0 VMA_SPEC=latency chrt 50 numactl -N 0 -C 0 ./udp_receive -t ${clients} -n ${num_tests} -d $i -w ${window_length_us} -o DelayTest_N${num_tests}_W${window_length_us}_D${i}_T${clients} -p
 done

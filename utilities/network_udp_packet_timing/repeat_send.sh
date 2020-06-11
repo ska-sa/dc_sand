@@ -10,6 +10,6 @@
 
 while :
 do
-    sudo chrt 50 numactl -C 0 -m 0 ./udp_send
+    sudo chrt 50 numactl -N 0 -m 0 ./udp_send
     sleep 10
 done
