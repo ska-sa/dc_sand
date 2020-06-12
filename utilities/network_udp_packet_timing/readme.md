@@ -51,7 +51,7 @@ The following are useful commands when looking at C-states:
 [powertop](https://01.org/powertop) utility.
 
 C-states can be disabled in system bios or by modifying some grub utilities. C-states have not yet been disabled but 
-a reduction in performance when a stream first starts transmitting has been observed and this has been attributed to 
+a reduction in performance when a stream first starts transmitting has been observed - this has been attributed to 
 the CPU switching from low power to high power C-states.
 
 #TODO: Disable C-states
@@ -100,6 +100,32 @@ In order to transmit packets at precise time intervals, all nodes on the network
 list of available NTP servers and that it has a "*" next to it indicating the time.
 
 2. ### PTP 
+    1. In order for ptp to work correctly, the ntp service needs to be stopped: `sudo service ntp stop`.
+    2. Install and configure ptp according to SDPs [Ansible scripts](https://github.com/ska-sa/katsdpinfrastructure/blob/master/ansible/roles/datetime/tasks/ptp.yml)
+        1. Install PTP - `sudo apt-get install ptpd`
+        2. Create a directory `/var/log/ptp` to log ptp information information. Set permissions to 0755
+        3. Overwrite the contents of `/etc/default/ptpd` file with the following 
+        [file](https://github.com/ska-sa/katsdpinfrastructure/blob/master/ansible/roles/datetime/files/etc_default_ptpd) 
+        from SPD.
+        4. Create the file `/etc/ptpd.conf` with permissions 0644. Copy the configuration information from the SDP 
+        ansible repo(found 
+        [here](https://github.com/ska-sa/katsdpinfrastructure/blob/master/ansible/roles/datetime/templates/ptpd_conf.j2)). 
+        5. In `/etc/ptpd.conf`, replace the `{{ ansible_default_ipv4.interface }}` command with the systems interface name. 
+        6. In `/etc/ptpd.conf`, remove the `{% if ptp_mode == 'masterslave' %}`, `{% else %}` and `{% endif %}` Ansible 
+        commands as well as the `ptpengine:preset=slaveonly` and `ptpengine:ntp_failover=n` between the `{% else %}` and
+        `{% endif %}` commands. This will put all ptp servers into a single pool.
+        7. Start the ptp service: `sudo service ptpd restart`. Simply running `sudo service ptpd start` did not start 
+        the service correctly - only restart seemsed to work.
+        
+By tailing the log file `tail -f /var/log/ptp/ptpd.log` on the all the ptp servers in the pool, you should be able to 
+see the nodes select a master and send their first synchronisation messages to each other. 
+
+In the log directory the file `/var/log/ptp/status` for each slave will report on how in sync it is with the master.
+An offset of a few microseconds is expected `Offset from Master : -0.000000935 s, mean -0.000006777 s, dev  0.000013388 s`
+
+**NOTE:** This configuration keeps all PTP servers in a pool and in sync with each other, however they will drift from 
+global time. This is acceptable for the purposes of the timing tests as the nodes in the pool only need to be in sync 
+with each other.
 
 ## Libvma
 Mellanox provides a library called VMA that accelerates the performance of standard socket applications. This is done 
@@ -137,6 +163,6 @@ stability without these commands is unknown.
 
 A number of commands are chained together to ensure the receiver is run as optimally as possible: 
 1. Receiver: `sudo LD_PRELOAD=libvma.so VMA-SELECT-POLL=-1 VMA_THREAD_MODE=0 VMA_SPEC=latency chrt 50 numactl 
--N 0 -m 0 ./udp_receive -t 1 -n 100 -d 500 -w 100000 -p -o DelayTest`
+-N 0 -m 0 ./udp_receive -t 1 -n 100 -d 500 -w 100000 -o NetworkTestOutputFile`
 2. Transmitter: `sudo LD_PRELOAD=libvma.so chrt 50 numactl -m 0 -C 4 ./udp_send`
 
