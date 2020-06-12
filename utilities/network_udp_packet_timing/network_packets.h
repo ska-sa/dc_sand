@@ -25,15 +25,15 @@
  */
 struct UdpTestingPacketHeader{
     struct timeval sTransmitTime; //Time first packet in stream was sent
-    int32_t i32PacketIndex; //Index of the current packet in stream
-    int32_t i32PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
+    int64_t i64PacketIndex; //Index of the current packet in stream
+    int64_t i64PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
     At the moment this field is left blank in non-trailing packets
     int32_t i32TrailingPacket; //Sometimes UDP streams drop data making it difficult to know when to stop receiving \
     packets without having some sort of timeout/polling mechanism. Both of these incur additional costs/system calls. \
     For high bandwidth streaming this can result in additional packets being lost. For the purposes of this framework, \
     A few packets will be transmitted a long time after the end of the stream with this flag set to not zero. When the \
     receiver detects these signals, it know that sending is complete and to not pole any further.
-    int32_t i32TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
+    int64_t i64TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
     this packet was tranmitted in
     int32_t i32ClientIndex; //The index of this client within the collection of clients
     

@@ -27,9 +27,9 @@
 
 #include "network_packets.h"
 
-#define SERVER_ADDRESS  "10.100.18.14"//TODO: Make a parameter
-#define LOCAL_ADDRESS   "127.0.0.1"//TODO: Make default value when now paramter is provided.
-  
+#define SERVER_ADDRESS              "10.100.101.1"//TODO: Make a parameter
+#define LOCAL_ADDRESS               "127.0.0.1"//TODO: Make default value when now paramter is provided.
+#define NUMBER_RINGBUFFER_PACKETS   1000
 // Driver code 
 int main() 
 { 
@@ -37,11 +37,10 @@ int main()
     struct sockaddr_in     sServAddr; 
 
     //1. ***** Create sample data to be sent *****
-    size_t ulMaximumTransmitBytes = MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacket);
+    size_t ulMaximumTransmitBytes = NUMBER_RINGBUFFER_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psSendBuffer = malloc(ulMaximumTransmitBytes);
-    for (size_t i = 0; i < MAXIMUM_NUMBER_OF_PACKETS; i++)
+    for (size_t i = 0; i < NUMBER_RINGBUFFER_PACKETS; i++)
     {
-        psSendBuffer[i].sHeader.i32PacketIndex = i;
         psSendBuffer[i].sHeader.i32TrailingPacket = 0;
     }
     
@@ -98,7 +97,7 @@ int main()
     struct timeval * psStopTime = malloc(sizeof(struct timeval)*iNumWindows);
     struct timeval * psStartTime = malloc(sizeof(struct timeval)*iNumWindows);
     int *  piNumberOfPacketsSentPerWindow = malloc(sizeof(int)*iNumWindows);
-    int iNumPacketsSentTotal = 0;
+    int64_t i64NumPacketsSentTotal = 0;
 
     double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
             ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
@@ -128,20 +127,22 @@ int main()
         double dEndTime = dTimeToStart_s + dWindowTransmitTime;
         do
         {
-            gettimeofday(&psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime, NULL);
+            size_t ulPacketRingbufferIndex = i64NumPacketsSentTotal % NUMBER_RINGBUFFER_PACKETS;
             //Fill in packet header data before transmitting
-            psSendBuffer[iNumPacketsSentTotal].sHeader.i32TransmitWindowIndex = i;
-            psSendBuffer[iNumPacketsSentTotal].sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
+            gettimeofday(&psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime, NULL);
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.i64PacketIndex = i64NumPacketsSentTotal;
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.i64TransmitWindowIndex = i;
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
 
-            dTransmittedTime_s = (double)psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_sec + \
-                    ((double)(psSendBuffer[iNumPacketsSentTotal].sHeader.sTransmitTime.tv_usec))/1000000.0;
+            dTransmittedTime_s = (double)psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime.tv_sec + \
+                    ((double)(psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime.tv_usec))/1000000.0;
 
-            int temp = sendto(iSocketFileDescriptor, (const char *)&psSendBuffer[iNumPacketsSentTotal], 
+            int temp = sendto(iSocketFileDescriptor, (const char *)&psSendBuffer[ulPacketRingbufferIndex], 
                     sizeof(struct UdpTestingPacket), 
                     0, (const struct sockaddr *) &sServAddr,  
                     sizeof(sServAddr)); 
             piNumberOfPacketsSentPerWindow[i]++;
-            iNumPacketsSentTotal++;
+            i64NumPacketsSentTotal++;
             if(temp != sizeof(struct UdpTestingPacket))
             {
                 printf("Error Transmitting Data: %d",temp);
@@ -161,7 +162,7 @@ int main()
     printf("Transmitting Trailing Packets to server\n");
     struct UdpTestingPacket sTrailingPacket;
     sTrailingPacket.sHeader.i32TrailingPacket = 1;
-    sTrailingPacket.sHeader.i32PacketsSent = iNumPacketsSentTotal;
+    sTrailingPacket.sHeader.i64PacketsSent = i64NumPacketsSentTotal;
     sTrailingPacket.sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
     //Transmit a few times to be safe - this is UDP after all
     for (size_t i = 0; i < 5; i++)

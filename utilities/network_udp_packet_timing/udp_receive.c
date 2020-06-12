@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
             int iClientIndex = psReceiveBuffer[i64ReceivedPacketsCount].sHeader.i32ClientIndex;
             pu8TrailingPacketReceived[iClientIndex] = 1;
             piTotalSentPacketsPerClient[iClientIndex] = 
-                    psReceiveBuffer[i64ReceivedPacketsCount].sHeader.i32PacketsSent;
+                    psReceiveBuffer[i64ReceivedPacketsCount].sHeader.i64PacketsSent;
             printf("Trailing packet received indicating client %d has finished transmitting.\n",
                     psReceiveBuffer[i64ReceivedPacketsCount].sHeader.i32ClientIndex);
             
@@ -330,7 +330,7 @@ void calculate_metrics(
     uint8_t u8OutOfOrder = 0;
     for (size_t i = 0; i < i64ReceivedPacketsCount; i++)
     {
-        if(i != 0 && psReceiveBuffer[i-1].sHeader.i32PacketIndex > psReceiveBuffer[i].sHeader.i32PacketIndex 
+        if(i != 0 && psReceiveBuffer[i-1].sHeader.i64PacketIndex > psReceiveBuffer[i].sHeader.i64PacketIndex 
                 && psReceiveBuffer[i-1].sHeader.i32ClientIndex == psReceiveBuffer[i].sHeader.i32ClientIndex)
         {
             printf("Data received out of order\n");
@@ -378,18 +378,18 @@ void calculate_metrics(
 
         //ONly print this if enabled - for long tests, significant time can be wasted here.
         if(u8NoTerminal == 0){
-            printf("Packet %ld Client %d Window %d Client Packet ID %d TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, \
-                    Diff RX/RX %fs\n",
-                    i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, 
-                    psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+            printf("Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs," 
+                    "Diff RX/RX %fs\n",
+                    i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i64TransmitWindowIndex, 
+                    psReceiveBuffer[i].sHeader.i64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
-        fprintf(pTextFile,"Packet %ld Client %d Window %d Client Packet ID %d TX %fs, RX %fs, Diff RX/TX %fs, \
-                Diff TX/TX %fs, Diff RX/RX %fs\n",
-                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex, 
-                psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
-        fprintf(pCsvFile,"%ld,%d,%d,%d,%f,%f\n",
-                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i32TransmitWindowIndex,
-                psReceiveBuffer[i].sHeader.i32PacketIndex, dTxTime, dRxTime);
+        fprintf(pTextFile,"Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, "
+                "Diff TX/TX %fs, Diff RX/RX %fs\n",
+                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i64TransmitWindowIndex, 
+                psReceiveBuffer[i].sHeader.i64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+        fprintf(pCsvFile,"%ld,%d,%ld,%ld,%f,%f\n",
+                i, psReceiveBuffer[i].sHeader.i32ClientIndex, psReceiveBuffer[i].sHeader.i64TransmitWindowIndex,
+                psReceiveBuffer[i].sHeader.i64PacketIndex, dTxTime, dRxTime);
 
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;

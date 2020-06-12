@@ -164,5 +164,4 @@ stability without these commands is unknown.
 A number of commands are chained together to ensure the receiver is run as optimally as possible: 
 1. Receiver: `sudo LD_PRELOAD=libvma.so VMA-SELECT-POLL=-1 VMA_THREAD_MODE=0 VMA_SPEC=latency chrt 50 numactl 
 -N 0 -m 0 ./udp_receive -t 1 -n 100 -d 500 -w 100000 -o NetworkTestOutputFile`
-2. Transmitter: `sudo LD_PRELOAD=libvma.so chrt 50 numactl -m 0 -C 4 ./udp_send`
-
+2. Transmitter: `sudo LD_PRELOAD=libvma.so chrt 50 numactl -m 0 -N 0 ./udp_send`
