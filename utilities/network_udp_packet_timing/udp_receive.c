@@ -68,17 +68,9 @@ struct WindowInformation{
     this is an unwanted overlap. If the overlap occurs at the end of the window, this counter is incremented. ***
     int64_t i64OverlappingWindowsFront; //If two packets from seperate windows are received in an interleaved fashion, then \
     this is an unwanted overlap. If the overlap occurs at the start of the window, this counter is incremented. ***
-    double dMinTxTxDiff_s; //The minimum recorded difference between the transmission time of two consecutive packets.
-    double dAvgTxTxDiff_s; //The average recorded difference between the transmission time of two consecutive packets.
-    double dMaxTxTxDiff_s; //The maximum recorded difference between the transmission time of two consecutive packets.
-    double dMinRxRxDiff_s; //The minimum recorded difference between the received time of two consecutive packets.
-    double dAvgRxRxDiff_s; //The average recorded difference between the received time of two consecutive packets.
-    double dMaxRxRxDiff_s; //The maximum recorded difference between the received time of two consecutive packets.
-    double dMinTxRxDiff_s; //The minimum recorded travel time of a single packet.
-    double dAvgTxRxDiff_s; //The average recorded travel time of a single packet.
-    double dMaxTxRxDiff_s; //The maximum recorded travel time of a single packet.
-    double dPacketDataRate_Gbps; //The data rate of the packet. Found using the forumla: \
-    (sLastRxTime-sFirstRxTime)/(sizeof(struct UdpTestingPacket)*i64PacketsRecieved)
+    double dMinTxRxDiff_s; //The minimum recorded travel time of a single packet. ***
+    double dAvgTxRxDiff_s; //The average recorded travel time of a single packet. ***
+    double dMaxTxRxDiff_s; //The maximum recorded travel time of a single packet. ***
 };
 
 /** \brief Function that parses all command line arguments
@@ -147,6 +139,8 @@ void calculate_window_metrics_packet_received(
 
 void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
+        uint32_t u32TransmitWindowsPerClient,
+        uint32_t u32TotalClients,
         uint8_t u8NoTerminal);
 
 // Driver code 
@@ -377,7 +371,7 @@ int main(int argc, char *argv[])
     getting system time here as trailing packets can take quite a while to arrive.
 
     //6. ***** Analyse data, and calculate and display performance metrics *****
-    calculate_window_metrics_all_packets_received(psWindowInformation,u8NoTerminal);
+    calculate_window_metrics_all_packets_received(psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients, u8NoTerminal);
 
     calculate_packet_metrics(sStopTime,sStartTime,psReceivedPacketHeaders,
             psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
@@ -575,6 +569,14 @@ void calculate_window_metrics_packet_received(
             + sReceivedPacketHeader->i32ClientIndex;
     struct WindowInformation * sCurrentWindow = &psWindowInformation[i64CurrentWindowIndex];
     
+    //Calculate Transit time
+    double dTransmitTime = sReceivedPacketHeader->sTransmitTime.tv_sec 
+                + sReceivedPacketHeader->sTransmitTime.tv_usec/1000000.0;
+    double dReceiveTime = sReceivedPacketReceivedTime->tv_sec 
+                + sReceivedPacketReceivedTime->tv_usec/1000000.0;
+    double dTransferTime = dReceiveTime - dTransmitTime;
+
+    //printf("Current Window Index %ld, %d\n",i64CurrentWindowIndex,u32TotalClients);
     //If this is the first packet in the window, a few fields need to be updated once off
     if(sCurrentWindow->i64PacketsReceived == 0)
     {
@@ -583,19 +585,22 @@ void calculate_window_metrics_packet_received(
         sCurrentWindow->i64FirstPacketIndex = sReceivedPacketHeader->i64PacketIndex;
         sCurrentWindow->i64TransmitWindowIndex = sReceivedPacketHeader->i64TransmitWindowIndex;
         sCurrentWindow->i32ClientIndex = sReceivedPacketHeader->i32ClientIndex;
+        sCurrentWindow->dMaxTxRxDiff_s = dTransferTime;
+        sCurrentWindow->dMinTxRxDiff_s = dTransferTime;
+        sCurrentWindow->dAvgTxRxDiff_s = 0;
     }
-
-    //This if statements only occurs when not at an expected window change boundary
-    if(sCurrentWindow->i64PacketsReceived != 0)
+    ////This if statements only occurs when not at an expected window change boundary
+    else
     {
         //Check that the previous packet is not from an unexpected different window - if it is, this means that an \
         unwanted packet overlap has occured
         struct UdpTestingPacketHeader * sPreviousPacketReceivedPacketHeader = &sPreviousReceivedPacket->sHeader;
         int64_t i64PreviousPacketWindowIndex = sPreviousPacketReceivedPacketHeader->i64TransmitWindowIndex 
             * u32TotalClients + sPreviousPacketReceivedPacketHeader->i32ClientIndex;
-        if(i64PreviousPacketWindowIndex != i64CurrentWindowIndex && i64CurrentWindowIndex != 0)
+        //printf("Packet Overlap: %ld %ld\n",i64PreviousPacketWindowIndex,i64CurrentWindowIndex);
+        if(i64PreviousPacketWindowIndex < i64CurrentWindowIndex && i64CurrentWindowIndex != 0)
         {
-            printf("Packet Overlap: %ld %ld\n",i64PreviousPacketWindowIndex,i64CurrentWindowIndex);
+            //printf("Packet Overlap: %ld %ld\n",i64PreviousPacketWindowIndex,i64CurrentWindowIndex);
             struct WindowInformation * sPreviousWindow = &psWindowInformation[i64PreviousPacketWindowIndex];
             sPreviousWindow->i64OverlappingWindowsBack++;
             sCurrentWindow->i64OverlappingWindowsFront++;
@@ -606,21 +611,32 @@ void calculate_window_metrics_packet_received(
         if(i64PreviousPacketWindowIndex == i64CurrentWindowIndex)
         {   
             //Packet is missing and assumed dropped
-            if(sReceivedPacketHeader->i64PacketIndex - sCurrentWindow->i64LastPacketIndex != 1)
+            int iPacketDifference = sReceivedPacketHeader->i64PacketIndex - sCurrentWindow->i64LastPacketIndex;
+            if(iPacketDifference != 1)
             {
-                printf("Packet has been dropped\n");
-                sCurrentWindow->i64MissingIndexes++;  
+                //printf("Packet has been dropped\n");
+                sCurrentWindow->i64MissingIndexes += iPacketDifference;  
             }
 
             //Packet is received out of order - would be VERY suprised to see this in the current test set up
             if(sReceivedPacketHeader->i64PacketIndex < sCurrentWindow->i64LastPacketIndex)
             {
-                printf("Packet has been dropped\n");
-                sCurrentWindow->i64OutOfOrderIndexes;  
+                printf("Packet Received out of order\n");
+                sCurrentWindow->i64OutOfOrderIndexes++;  
             }
         }
     }
 
+    //Check if this is a new maximum/minimum transit time
+    if(sCurrentWindow->dMaxTxRxDiff_s < dTransferTime){
+        sCurrentWindow->dMaxTxRxDiff_s = dTransferTime;
+    }
+    if(sCurrentWindow->dMinTxRxDiff_s > dTransferTime)
+    {
+        sCurrentWindow->dMinTxRxDiff_s = dTransferTime;
+    }
+
+    sCurrentWindow->dAvgTxRxDiff_s += dTransferTime;
     sCurrentWindow->sLastRxTime = *sReceivedPacketReceivedTime;
     sCurrentWindow->sLastTxTime = sReceivedPacketHeader->sTransmitTime;
     sCurrentWindow->i64LastPacketIndex = sReceivedPacketHeader->i64PacketIndex;
@@ -630,9 +646,50 @@ void calculate_window_metrics_packet_received(
 
 void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
+        uint32_t u32TransmitWindowsPerClient,
+        uint32_t u32TotalClients,
         uint8_t u8NoTerminal)
 {
-    printf("Here\n");
+    for (size_t i = 0; i < u32TotalClients*u32TransmitWindowsPerClient; i++)
+    {
+        //Calculate Runtime
+        double dStartTimeRx_s = psWindowInformation[i].sFirstRxTime.tv_sec 
+                + psWindowInformation[i].sFirstRxTime.tv_usec/1000000.0;
+        double dEndTimeRx_s = psWindowInformation[i].sLastRxTime.tv_sec 
+                + psWindowInformation[i].sLastRxTime.tv_usec/1000000.0;
+        double dWindowRunTimeRx_s = dEndTimeRx_s - dStartTimeRx_s;
+
+        double dStartTimeTx_s = psWindowInformation[i].sFirstTxTime.tv_sec 
+                + psWindowInformation[i].sFirstTxTime.tv_usec/1000000.0;
+        double dEndTimeTx_s = psWindowInformation[i].sLastTxTime.tv_sec 
+                + psWindowInformation[i].sLastTxTime.tv_usec/1000000.0;
+        double dWindowRunTimeTx_s = dEndTimeTx_s - dStartTimeTx_s;
+
+        //Calculate Data rate using the runtime values that have just been calculated
+        double dDataTransfered_bytes = psWindowInformation[i].i64PacketsReceived * sizeof(struct UdpTestingPacket);
+
+        double dDataRate_Gibps = dDataTransfered_bytes*8/dWindowRunTimeTx_s/1024.0/1024.0/1024.0;
+
+        //Do division to go from total to average differences
+        psWindowInformation[i].dAvgTxRxDiff_s = 
+                    psWindowInformation[i].dAvgTxRxDiff_s/((double)psWindowInformation[i].i64PacketsReceived);
+
+        printf("i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, Tx_Runtime: %f," 
+                "DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, Overlap Back %ld\n",
+                i,psWindowInformation[i].i32ClientIndex,
+                psWindowInformation[i].i64TransmitWindowIndex,
+                psWindowInformation[i].i64PacketsReceived,
+                psWindowInformation[i].i64MissingIndexes,
+                dWindowRunTimeRx_s,
+                dWindowRunTimeTx_s,
+                dDataRate_Gibps,
+                psWindowInformation[i].dAvgTxRxDiff_s,
+                psWindowInformation[i].dMinTxRxDiff_s,
+                psWindowInformation[i].dMaxTxRxDiff_s,
+                psWindowInformation[i].i64OverlappingWindowsFront,
+                psWindowInformation[i].i64OverlappingWindowsBack);
+    }
+    
 }
 
 
