@@ -104,7 +104,7 @@ int main()
     double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
 
 
-    printf("Waiting Until Specified Time To Transmit Data\n");
+    printf("Transmitting Data...\n");
     //5. ***** Stream data to server - a number of windows have to be transferred *****
     for (size_t i = 0; i < iNumWindows; i++)
     {

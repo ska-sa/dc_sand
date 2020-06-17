@@ -13,7 +13,9 @@
  * transmit a certain number of windows. The window length, number of windows and dead time between windows are all
  * specified by the user on program launch.
  * 
- * The received packet metadata is written to file for analysis by seperate scripts. 
+ * The received packet metadata is written to file for analysis by seperate scripts. The user can choose to  either 
+ * write individual packet information to file or combine the information per window. By combining the information per 
+ * window, significantly less RAM and file space is required meaning that much longer tests can be run.
  *
  * @author  Gareth Callanan
  *          South African Radio Astronomy Observatory(SARAO)
@@ -49,31 +51,31 @@
  * tests where it is not practical to store the information of every packet.
  */ 
 struct WindowInformation{
-    struct timeval sFirstRxTime; //Time first received packet in window was received. ***
-    struct timeval sFirstTxTime; //Time first received packet in window was transmitted. ***
-    struct timeval sLastRxTime; //Time latest received packet in window was received. ***
-    struct timeval sLastTxTime; //Time latest received packet in window was transmitted. ***
+    struct timeval sFirstRxTime; //Time first received packet in window was received.
+    struct timeval sFirstTxTime; //Time first received packet in window was transmitted.
+    struct timeval sLastRxTime; //Time latest received packet in window was received.
+    struct timeval sLastTxTime; //Time latest received packet in window was transmitted.
     int64_t i64TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
-    index per client. ***
-    int32_t i32ClientIndex; //The index of this client this window corresponds to. ***
-    int64_t i64PacketsReceived; //The total amount of packets received by this window. ***
-    int64_t i64FirstPacketIndex; //The index of the first packet received in this window. ***
-    int64_t i64LastPacketIndex; //The index of the last packet received in this window. ***
+    index per client.
+    int32_t i32ClientIndex; //The index of this client this window corresponds to.
+    int64_t i64PacketsReceived; //The total amount of packets received by this window.
+    int64_t i64FirstPacketIndex; //The index of the first packet received in this window.
+    int64_t i64LastPacketIndex; //The index of the last packet received in this window.
     int64_t i64MissingIndexes; //If a received packet index is more than one above the last packet index, this \
-    indicates that a packet has most likely been dropped - when this occurs this counter is incremented. ***
+    indicates that a packet has most likely been dropped - when this occurs this counter is incremented.
     int64_t i64OutOfOrderIndexes; //If a received packet index is less than the last packet index, then a packet has \
     been received out of order. This is not expected to occur, however it is still checked for in order to fully \
-    charectarise the network. ***
+    charectarise the network.
     int64_t i64OverlappingWindowsBack; //If two packets from seperate windows are received in an interleaved fashion, then \
-    this is an unwanted overlap. If the overlap occurs at the end of the window, this counter is incremented. ***
+    this is an unwanted overlap. If the overlap occurs at the end of the window, this counter is incremented.
     int64_t i64OverlappingWindowsFront; //If two packets from seperate windows are received in an interleaved fashion, then \
-    this is an unwanted overlap. If the overlap occurs at the start of the window, this counter is incremented. ***
-    double dMinTxRxDiff_s; //The minimum recorded travel time of a single packet. ***
-    double dAvgTxRxDiff_s; //The average recorded travel time of a single packet. ***
-    double dMaxTxRxDiff_s; //The maximum recorded travel time of a single packet. ***
+    this is an unwanted overlap. If the overlap occurs at the start of the window, this counter is incremented.
+    double dMinTxRxDiff_s; //The minimum recorded travel time of a single packet.
+    double dAvgTxRxDiff_s; //The average recorded travel time of a single packet.
+    double dMaxTxRxDiff_s; //The maximum recorded travel time of a single packet.
 };
 
-/** \brief Function that parses all command line arguments
+/** Function that parses all command line arguments
  *  
  *  \param[in]  argc                            Value passed into main() indicating the number of command line 
  *                                              parameters passed into the program.
@@ -104,9 +106,9 @@ int parse_cmd_parameters(
         uint8_t * u8NoTerminal,
         uint8_t * u8Combine);
 
-/** \brief Function that calculates metrics based on the received packets and writes it to file on a per packet basis
+/** Function that calculates metrics based on the received packets and writes it to file on a per packet basis.
  *  
- *  \param[in] sStopTime 
+ *  \param[in] sStopTime                        Time the very last packet out of all windows and clients was received.
  *  \param[in] sStartTime                       Time the very first packet out of all windows and clients was received.
  *  \param[in] psReceiveBuffer                  Pointer to array containing received packets.
  *  \param[in] psRxTimes                        Pointer to array containing the times the packets in 
@@ -129,6 +131,15 @@ void calculate_packet_metrics(
         char * pi8OutputFileName,
         uint8_t u8NoTerminal);
 
+/** Function that takes a received packet and updates the window statistics using the packet header information. 
+ *  
+ *  \param[in] sReceivedPacketReceivedTime      The time the current packet was received.
+ *  \param[in] sReceivedPacket                  Pointer to the most recently received packet.
+ *  \param[in] sPreviousReceivedPacket          Pointer to the packet received before the most recent packet.
+ *  \param[in] psWindowInformation              Array of all structs containing per window statistics.
+ *  \param[in] u32TransmitWindowsPerClient      The number of windows that each client must transmit.
+ *  \param[in] u32TotalClients                  The number of transmitter clients that connect to this receiver server.
+ */
 void calculate_window_metrics_packet_received(
         struct timeval * sReceivedPacketReceivedTime,
         struct UdpTestingPacket * sReceivedPacket,
@@ -137,6 +148,17 @@ void calculate_window_metrics_packet_received(
         uint32_t u32TransmitWindowsPerClient,
         uint32_t u32TotalClients);
 
+/** Function that finishes calculating window statistics and then writes them to file and prints them to the 
+ *  terminal. The \ref calculate_window_metrics_packet_received() function is called every time a packet is received 
+ *  while this function is only called once after the last packet has been received.
+ *  
+ *  \param[in] psWindowInformation              Array of all structs containing per window statistics.
+ *  \param[in] u32TransmitWindowsPerClient      The number of windows that each client must transmit.
+ *  \param[in] u32TotalClients                  The number of transmitter clients that connect to this receiver server.
+ *  \param[in] u8NoTerminal                     If 1 indicates that the program must disable printing window information
+ *                                              to the terminal.
+ *  \param[in] pi8OutputFileName                Name of the file to write to.
+ */
 void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
         uint32_t u32TransmitWindowsPerClient,
@@ -164,25 +186,24 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    //Estimate the length of time the tests will run for
     double dExpectedRuntime_s = (int64_t)(u32DeadTime_us + u32TransmitWindowLength_us) 
             * (int64_t)u32TransmitWindowsPerClient * (int64_t)u32TotalClients;
     dExpectedRuntime_s = dExpectedRuntime_s/1000000;
     int32_t i32Hours = dExpectedRuntime_s/3600;
-    printf("%f %d\n",dExpectedRuntime_s,i32Hours);
     int32_t i32Minutes = (dExpectedRuntime_s - i32Hours*3600)/60;
     double dSeconds = dExpectedRuntime_s - i32Hours*3600 - i32Minutes*60;
     printf("This program will take %d Hours, %d Minutes, %f Seconds to run\n",i32Hours,i32Minutes,dSeconds);
     
-    int iSocketFileDescriptor; 
-    struct sockaddr_in sServAddr, sCliAddr; 
-
+    
     //Allocate buffers if data to store 
     size_t ulRingbufferBytes = NUMBER_RINGBUFFER_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psReceiveBuffer = malloc(ulRingbufferBytes);
     
+    //The allocations below depend on the whether per-window or per-packet metrics are being recorded. Per-window \
+    metrics require significantly less space
     struct timeval * psRxTimes;
     struct UdpTestingPacketHeader * psReceivedPacketHeaders;
-    
     struct WindowInformation * psWindowInformation;
     if(u8Combine != 0)
     {   
@@ -198,6 +219,9 @@ int main(int argc, char *argv[])
     
     
     //2. ***** Creating socket file descriptor *****
+    int iSocketFileDescriptor; 
+    struct sockaddr_in sServAddr, sCliAddr; 
+
     if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
     { 
         perror("socket creation failed"); 
@@ -288,7 +312,6 @@ int main(int argc, char *argv[])
     int * piTotalSentPacketsPerClient = (int *) malloc(u32TotalClients*sizeof(int));
     memset(piTotalSentPacketsPerClient,0,u32TotalClients*sizeof(int));
     
-
     printf("Starting Streaming\n");
     size_t ulReceivedPacketIndex;
     int64_t i64ReceivedPacketsCount = 0;
@@ -297,7 +320,7 @@ int main(int argc, char *argv[])
     while(1)//Keep waiting for data until trailing packets have been received
     {  
 
-        //5.1 ***** *****
+        //5.1 ***** Poll Socket for received packet *****
         ulReceivedPacketIndex = i64ReceivedPacketsCount % NUMBER_RINGBUFFER_PACKETS;
         iReceivedBytes = recvfrom(iSocketFileDescriptor, (char *)&psReceiveBuffer[ulReceivedPacketIndex], 
                 sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &sCliAddr, 
@@ -317,7 +340,8 @@ int main(int argc, char *argv[])
         {
             gettimeofday(&psRxTimes[i64ReceivedPacketsCount], NULL);
         }
-        //5.2 ***** *****
+
+        //5.2 ***** Checking End Conditions *****
         //This if-statement confirms end condition has been received - I think a better way to do this in the \
         future would be to just wait until a set time has passed and then send out-of-band messages to the clients \
         asking for meta data. This is not worth changing for now.
@@ -345,34 +369,33 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        //If this is the very first packet received then reset the start time
+        //5.3 ***** If this is the very first packet received then reset the start time *****
         if(i64ReceivedPacketsCount == 0)
         {
             gettimeofday(&sStartTime, NULL);
         }
 
-        //5.3 ***** *****
-        //This code is only called if per window information is being gathered
-        size_t ulReceivedPacketIndexPrevious;
-        if(ulReceivedPacketIndex != 0){
-            ulReceivedPacketIndexPrevious = ulReceivedPacketIndex - 1;
-        }else{
-            ulReceivedPacketIndexPrevious = NUMBER_RINGBUFFER_PACKETS-1;
-        }
-
+        //5.4 ***** This section prepares the data so that it can be used for analysis - This can is different \
+        depending on whether per window or per packet information is being gathered *****
         if(u8Combine != 0){
-        calculate_window_metrics_packet_received(
-                &psRxTimes[ulReceivedPacketIndex],
-                &psReceiveBuffer[ulReceivedPacketIndex],
-                &psReceiveBuffer[ulReceivedPacketIndexPrevious],
-                psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients);
+            size_t ulReceivedPacketIndexPrevious;
+            if(ulReceivedPacketIndex != 0){
+                ulReceivedPacketIndexPrevious = ulReceivedPacketIndex - 1;
+            }else{
+                ulReceivedPacketIndexPrevious = NUMBER_RINGBUFFER_PACKETS-1;
+            }
+            calculate_window_metrics_packet_received(
+                    &psRxTimes[ulReceivedPacketIndex],
+                    &psReceiveBuffer[ulReceivedPacketIndex],
+                    &psReceiveBuffer[ulReceivedPacketIndexPrevious],
+                    psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients);
         }else{
-            //This memcopy only occurs if per packet information is being gathered
+            //This memcopy only occurs if per packet information is being gathered, the headers are not kept otherwise.
             memcpy(&psReceivedPacketHeaders[i64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
                     sizeof(struct UdpTestingPacketHeader));
         }
 
-        //5.4 ***** *****
+        //5.5 ***** Incrementing Packet Counter *****
         i64ReceivedPacketsCount++;//Not counted in the case of a trailing packet
     }
 
@@ -405,7 +428,7 @@ int main(int argc, char *argv[])
                 psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
     }
 
-    //Cleanup
+    //7. ***** Clean up *****
     free(pu8TrailingPacketReceived);
     free(piTotalSentPacketsPerClient);
     free(psCliAddrInit);
@@ -689,6 +712,7 @@ void calculate_window_metrics_all_packets_received(
     FILE *pCsvFile;
     FILE *pTextFile;
 
+    //Configure output file names
     char * pi8OutputFileNameCsv = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".csv") );
     char * pi8OutputFileNameTxt = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".txt") );
     strcat(pi8OutputFileNameCsv,pi8OutputFileName);
@@ -698,7 +722,8 @@ void calculate_window_metrics_all_packets_received(
     pCsvFile = fopen(pi8OutputFileNameCsv,"w");
     pTextFile = fopen(pi8OutputFileNameTxt,"w");
 
-    for (size_t i = 0; i < u32TotalClients*u32TransmitWindowsPerClient; i++)
+    //Iterate through every window
+    for (size_t i = 0; i < (size_t)u32TotalClients*(size_t)u32TransmitWindowsPerClient; i++)
     {
         //Calculate Runtime
         double dStartTimeRx_s = psWindowInformation[i].sFirstRxTime.tv_sec 
@@ -722,6 +747,7 @@ void calculate_window_metrics_all_packets_received(
         psWindowInformation[i].dAvgTxRxDiff_s = 
                     psWindowInformation[i].dAvgTxRxDiff_s/((double)psWindowInformation[i].i64PacketsReceived);
 
+        //Write all data to file/terminal
         if(u8NoTerminal == 0){
             printf("i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, Tx_Runtime: %f, " 
                     "DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, "
