@@ -141,7 +141,8 @@ void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
         uint32_t u32TransmitWindowsPerClient,
         uint32_t u32TotalClients,
-        uint8_t u8NoTerminal);
+        uint8_t u8NoTerminal,
+        char * pi8OutputFileName);
 
 // Driver code 
 int main(int argc, char *argv[]) 
@@ -395,7 +396,7 @@ int main(int argc, char *argv[])
     if(u8Combine != 0)
     {
         calculate_window_metrics_all_packets_received(psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients,
-                u8NoTerminal);
+                u8NoTerminal, pu8OutputFileName);
     }
     else
     {
@@ -681,8 +682,21 @@ void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
         uint32_t u32TransmitWindowsPerClient,
         uint32_t u32TotalClients,
-        uint8_t u8NoTerminal)
+        uint8_t u8NoTerminal,
+        char * pi8OutputFileName)
 {
+    FILE *pCsvFile;
+    FILE *pTextFile;
+
+    char * pi8OutputFileNameCsv = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".csv") );
+    char * pi8OutputFileNameTxt = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".txt") );
+    strcat(pi8OutputFileNameCsv,pi8OutputFileName);
+    strcat(pi8OutputFileNameCsv,".csv");
+    strcat(pi8OutputFileNameTxt,pi8OutputFileName);
+    strcat(pi8OutputFileNameTxt,".txt");
+    pCsvFile = fopen(pi8OutputFileNameCsv,"w");
+    pTextFile = fopen(pi8OutputFileNameTxt,"w");
+
     for (size_t i = 0; i < u32TotalClients*u32TransmitWindowsPerClient; i++)
     {
         //Calculate Runtime
@@ -707,8 +721,27 @@ void calculate_window_metrics_all_packets_received(
         psWindowInformation[i].dAvgTxRxDiff_s = 
                     psWindowInformation[i].dAvgTxRxDiff_s/((double)psWindowInformation[i].i64PacketsReceived);
 
-        printf("i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, Tx_Runtime: %f," 
-                "DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, Overlap Back %ld\n",
+        if(u8NoTerminal == 0){
+            printf("i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, Tx_Runtime: %f, " 
+                    "DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, "
+                    "Overlap Back %ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
+                    i,psWindowInformation[i].i32ClientIndex,
+                    psWindowInformation[i].i64TransmitWindowIndex,
+                    psWindowInformation[i].i64PacketsReceived,
+                    psWindowInformation[i].i64MissingIndexes,
+                    dWindowRunTimeRx_s,
+                    dWindowRunTimeTx_s,
+                    dDataRate_Gibps,
+                    psWindowInformation[i].dAvgTxRxDiff_s,
+                    psWindowInformation[i].dMinTxRxDiff_s,
+                    psWindowInformation[i].dMaxTxRxDiff_s,
+                    psWindowInformation[i].i64OverlappingWindowsFront,
+                    psWindowInformation[i].i64OverlappingWindowsBack,
+                    dStartTimeTx_s, dEndTimeTx_s, dStartTimeRx_s, dEndTimeRx_s);
+        }
+        fprintf(pTextFile,"i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, "
+                "Tx_Runtime: %f, DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, "
+                "Overlap Back %ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
                 i,psWindowInformation[i].i32ClientIndex,
                 psWindowInformation[i].i64TransmitWindowIndex,
                 psWindowInformation[i].i64PacketsReceived,
@@ -720,9 +753,26 @@ void calculate_window_metrics_all_packets_received(
                 psWindowInformation[i].dMinTxRxDiff_s,
                 psWindowInformation[i].dMaxTxRxDiff_s,
                 psWindowInformation[i].i64OverlappingWindowsFront,
-                psWindowInformation[i].i64OverlappingWindowsBack);
+                psWindowInformation[i].i64OverlappingWindowsBack,
+                dStartTimeTx_s, dEndTimeTx_s, dStartTimeRx_s, dEndTimeRx_s);
+        fprintf(pCsvFile,"%ld, %d, %ld, %ld, %ld, %f, %f, %f, %f, %f, %f, %ld, %ld, %f, %f, %f, %f\n",
+                i,psWindowInformation[i].i32ClientIndex,
+                psWindowInformation[i].i64TransmitWindowIndex,
+                psWindowInformation[i].i64PacketsReceived,
+                psWindowInformation[i].i64MissingIndexes,
+                dWindowRunTimeRx_s,
+                dWindowRunTimeTx_s,
+                dDataRate_Gibps,
+                psWindowInformation[i].dAvgTxRxDiff_s,
+                psWindowInformation[i].dMinTxRxDiff_s,
+                psWindowInformation[i].dMaxTxRxDiff_s,
+                psWindowInformation[i].i64OverlappingWindowsFront,
+                psWindowInformation[i].i64OverlappingWindowsBack,
+                dStartTimeTx_s, dEndTimeTx_s, dStartTimeRx_s, dEndTimeRx_s);
     }
     
+    fclose(pCsvFile);
+    fclose(pTextFile);
 }
 
 
