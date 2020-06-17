@@ -164,10 +164,11 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    double dExpectedRuntime_s = (u32DeadTime_us + u32TransmitWindowLength_us) 
-            * u32TransmitWindowsPerClient * u32TotalClients;
+    double dExpectedRuntime_s = (int64_t)(u32DeadTime_us + u32TransmitWindowLength_us) 
+            * (int64_t)u32TransmitWindowsPerClient * (int64_t)u32TotalClients;
     dExpectedRuntime_s = dExpectedRuntime_s/1000000;
     int32_t i32Hours = dExpectedRuntime_s/3600;
+    printf("%f %d\n",dExpectedRuntime_s,i32Hours);
     int32_t i32Minutes = (dExpectedRuntime_s - i32Hours*3600)/60;
     double dSeconds = dExpectedRuntime_s - i32Hours*3600 - i32Minutes*60;
     printf("This program will take %d Hours, %d Minutes, %f Seconds to run\n",i32Hours,i32Minutes,dSeconds);
