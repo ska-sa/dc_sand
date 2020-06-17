@@ -27,9 +27,9 @@
 
 #include "network_packets.h"
 
-#define SERVER_ADDRESS              "10.100.101.1"//TODO: Make a parameter
+#define SERVER_ADDRESS              "10.100.18.4"//TODO: Make a parameter
 #define LOCAL_ADDRESS               "127.0.0.1"//TODO: Make default value when now paramter is provided.
-#define NUMBER_RINGBUFFER_PACKETS   1000
+#define NUMBER_RINGBUFFER_PACKETS   100000
 // Driver code 
 int main() 
 { 

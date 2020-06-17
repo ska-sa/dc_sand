@@ -43,7 +43,7 @@
 
 //This needs to be reworked
 #define MAXIMUM_NUMBER_OF_PACKETS   500000000 //Should be able to store about 30 minutes worth of headers at 10 Gbps
-#define NUMBER_RINGBUFFER_PACKETS   1000
+#define NUMBER_RINGBUFFER_PACKETS   100000
 
 /** This struct exists for when per window information is stored instead of per packet. This is necessary for longer 
  * tests where it is not practical to store the information of every packet.
@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 { 
     printf("Funnel In Test Server.\n\n");
     
-    //1. ***** Parse command line arguments and set up initial server *****
+    //1. ***** Parse command line arguments and set up server *****
     uint32_t u32TransmitWindowLength_us = TRANSMIT_WINDOW_US_DEFAULT;
     uint32_t u32DeadTime_us = DEAD_TIME_US_DEFAULT;
     uint32_t u32TransmitWindowsPerClient = TOTAL_WINDOWS_PER_CLIENT_DEFAULT;
@@ -178,13 +178,22 @@ int main(int argc, char *argv[])
     size_t ulRingbufferBytes = NUMBER_RINGBUFFER_PACKETS*sizeof(struct UdpTestingPacket);
     struct UdpTestingPacket * psReceiveBuffer = malloc(ulRingbufferBytes);
     
-    struct timeval * psRxTimes = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct timeval));
-    struct UdpTestingPacketHeader * psReceivedPacketHeaders = 
-            malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacketHeader));
+    struct timeval * psRxTimes;
+    struct UdpTestingPacketHeader * psReceivedPacketHeaders;
     
-    struct WindowInformation * psWindowInformation = 
-            malloc(u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
-    memset(psWindowInformation,0,u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
+    struct WindowInformation * psWindowInformation;
+    if(u8Combine != 0)
+    {   
+        psRxTimes = malloc(NUMBER_RINGBUFFER_PACKETS*sizeof(struct timeval));
+        psWindowInformation = malloc(u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
+        memset(psWindowInformation,0,u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
+    }
+    else
+    {
+        psRxTimes = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct timeval));
+        psReceivedPacketHeaders = malloc(MAXIMUM_NUMBER_OF_PACKETS*sizeof(struct UdpTestingPacketHeader));
+    }
+    
     
     //2. ***** Creating socket file descriptor *****
     if ( (iSocketFileDescriptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0 ) 
@@ -298,8 +307,14 @@ int main(int argc, char *argv[])
         }
 
         //Write the received time to the last received packet.
-        gettimeofday(&psRxTimes[i64ReceivedPacketsCount], NULL);
-
+        if (u8Combine != 0)
+        {
+            gettimeofday(&psRxTimes[ulReceivedPacketIndex], NULL);
+        }
+        else
+        {
+            gettimeofday(&psRxTimes[i64ReceivedPacketsCount], NULL);
+        }
         //5.2 ***** *****
         //This if-statement confirms end condition has been received - I think a better way to do this in the \
         future would be to just wait until a set time has passed and then send out-of-band messages to the clients \
@@ -343,15 +358,17 @@ int main(int argc, char *argv[])
             ulReceivedPacketIndexPrevious = NUMBER_RINGBUFFER_PACKETS-1;
         }
 
+        if(u8Combine != 0){
         calculate_window_metrics_packet_received(
-                &psRxTimes[i64ReceivedPacketsCount],
+                &psRxTimes[ulReceivedPacketIndex],
                 &psReceiveBuffer[ulReceivedPacketIndex],
                 &psReceiveBuffer[ulReceivedPacketIndexPrevious],
                 psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients);
-
-        //This memcopy only occurs if per packet information is being gathered
-        memcpy(&psReceivedPacketHeaders[i64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
-                sizeof(struct UdpTestingPacketHeader));
+        }else{
+            //This memcopy only occurs if per packet information is being gathered
+            memcpy(&psReceivedPacketHeaders[i64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
+                    sizeof(struct UdpTestingPacketHeader));
+        }
 
         //5.4 ***** *****
         i64ReceivedPacketsCount++;//Not counted in the case of a trailing packet
@@ -366,23 +383,39 @@ int main(int argc, char *argv[])
     {
         i64TotalSentPackets += piTotalSentPacketsPerClient[i];
     }
+
+    printf("Total Packets Sent: %ld, Total Packets Received: %ld\n", i64TotalSentPackets, i64ReceivedPacketsCount);
     
-    sStopTime = psRxTimes[i64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
-    getting system time here as trailing packets can take quite a while to arrive.
+    if(u8Combine == 0){
+        sStopTime = psRxTimes[i64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
+        getting system time here as trailing packets can take quite a while to arrive.
+    }
 
     //6. ***** Analyse data, and calculate and display performance metrics *****
-    calculate_window_metrics_all_packets_received(psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients, u8NoTerminal);
-
-    calculate_packet_metrics(sStopTime,sStartTime,psReceivedPacketHeaders,
-            psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
+    if(u8Combine != 0)
+    {
+        calculate_window_metrics_all_packets_received(psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients,
+                u8NoTerminal);
+    }
+    else
+    {
+        calculate_packet_metrics(sStopTime,sStartTime,psReceivedPacketHeaders,
+                psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
+    }
 
     //Cleanup
     free(pu8TrailingPacketReceived);
     free(piTotalSentPacketsPerClient);
     free(psCliAddrInit);
     free(psReceiveBuffer);
-    free(psWindowInformation);
     free(psRxTimes);
+    if(u8Combine != 0){
+        free(psWindowInformation);
+    }
+    else
+    {
+        free(psReceivedPacketHeaders);
+    }
     close(iSocketFileDescriptor);
 
     return 0;
