@@ -145,7 +145,7 @@ void calculate_window_metrics_packet_received(
         struct UdpTestingPacket * sReceivedPacket,
         struct UdpTestingPacket * sPreviousReceivedPacket,
         struct WindowInformation * psWindowInformation,
-        uint32_t u32TransmitWindowsPerClient,
+        uint64_t u64TransmitWindowsPerClient,
         uint32_t u32TotalClients);
 
 /** Function that finishes calculating window statistics and then writes them to file and prints them to the 
@@ -174,21 +174,21 @@ int main(int argc, char *argv[])
     //1. ***** Parse command line arguments and set up server *****
     uint32_t u32TransmitWindowLength_us = TRANSMIT_WINDOW_US_DEFAULT;
     uint32_t u32DeadTime_us = DEAD_TIME_US_DEFAULT;
-    uint32_t u32TransmitWindowsPerClient = TOTAL_WINDOWS_PER_CLIENT_DEFAULT;
+    uint32_t u64TransmitWindowsPerClient = TOTAL_WINDOWS_PER_CLIENT_DEFAULT;
     uint32_t u32TotalClients = TOTAL_CLIENTS_DEFAULT;
     uint8_t  u8NoTerminal = DONT_PRINT_TO_TERMINAL_DEFAULT; 
     uint8_t u8Combine = COMBINE_DEFAULT;
     char * pu8OutputFileName = FILE_NAME_DEFAULT;
 
     int iRet = parse_cmd_parameters(argc, argv, &pu8OutputFileName, &u32TransmitWindowLength_us, 
-            &u32DeadTime_us, &u32TransmitWindowsPerClient, &u32TotalClients, &u8NoTerminal, &u8Combine);
+            &u32DeadTime_us, &u64TransmitWindowsPerClient, &u32TotalClients, &u8NoTerminal, &u8Combine);
     if(iRet != 0){
         return 0;
     }
 
     //Estimate the length of time the tests will run for
     double dExpectedRuntime_s = (int64_t)(u32DeadTime_us + u32TransmitWindowLength_us) 
-            * (int64_t)u32TransmitWindowsPerClient * (int64_t)u32TotalClients;
+            * (int64_t)u64TransmitWindowsPerClient * (int64_t)u32TotalClients;
     dExpectedRuntime_s = dExpectedRuntime_s/1000000;
     int32_t i32Hours = dExpectedRuntime_s/3600;
     int32_t i32Minutes = (dExpectedRuntime_s - i32Hours*3600)/60;
@@ -208,8 +208,8 @@ int main(int argc, char *argv[])
     if(u8Combine != 0)
     {   
         psRxTimes = malloc(NUMBER_RINGBUFFER_PACKETS*sizeof(struct timeval));
-        psWindowInformation = malloc(u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
-        memset(psWindowInformation,0,u32TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
+        psWindowInformation = malloc(u64TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
+        memset(psWindowInformation,0,u64TransmitWindowsPerClient * u32TotalClients * sizeof(struct WindowInformation));
     }
     else
     {
@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = u32TransmitWindowLength_us;
         sConfigurationPacket.u64DeadTime_us = u32DeadTime_us;
-        sConfigurationPacket.u64NumberOfRepeats = u32TransmitWindowsPerClient;
+        sConfigurationPacket.u64NumberOfRepeats = u64TransmitWindowsPerClient;
         sConfigurationPacket.u64NumClients = u32TotalClients;
         sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
         sConfigurationPacket.u64ClientIndex = i;
@@ -314,14 +314,14 @@ int main(int argc, char *argv[])
     
     printf("Starting Streaming\n");
     size_t ulReceivedPacketIndex;
-    int64_t i64ReceivedPacketsCount = 0;
+    uint64_t u64ReceivedPacketsCount = 0;
     struct timeval sStopTime, sStartTime;
     gettimeofday(&sStartTime, NULL);
     while(1)//Keep waiting for data until trailing packets have been received
     {  
 
         //5.1 ***** Poll Socket for received packet *****
-        ulReceivedPacketIndex = i64ReceivedPacketsCount % NUMBER_RINGBUFFER_PACKETS;
+        ulReceivedPacketIndex = u64ReceivedPacketsCount % NUMBER_RINGBUFFER_PACKETS;
         iReceivedBytes = recvfrom(iSocketFileDescriptor, (char *)&psReceiveBuffer[ulReceivedPacketIndex], 
                 sizeof(struct UdpTestingPacket), MSG_WAITALL, ( struct sockaddr *) &sCliAddr, 
                 &iSockAddressLength); 
@@ -338,7 +338,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            gettimeofday(&psRxTimes[i64ReceivedPacketsCount], NULL);
+            gettimeofday(&psRxTimes[u64ReceivedPacketsCount], NULL);
         }
 
         //5.2 ***** Checking End Conditions *****
@@ -351,7 +351,7 @@ int main(int argc, char *argv[])
             pu8TrailingPacketReceived[iClientIndex] = 1;
             pu64TotalSentPacketsPerClient[iClientIndex] = 
                     psReceiveBuffer[ulReceivedPacketIndex].sHeader.u64PacketsSent;
-            printf("Trailing packet received indicating client %d has finished transmitting.\n",
+            printf("Trailing packet received indicating client %ld has finished transmitting.\n",
                     psReceiveBuffer[ulReceivedPacketIndex].sHeader.u64ClientIndex);
             
             uint8_t u8End = 1;
@@ -370,7 +370,7 @@ int main(int argc, char *argv[])
         }
 
         //5.3 ***** If this is the very first packet received then reset the start time *****
-        if(i64ReceivedPacketsCount == 0)
+        if(u64ReceivedPacketsCount == 0)
         {
             gettimeofday(&sStartTime, NULL);
         }
@@ -388,15 +388,15 @@ int main(int argc, char *argv[])
                     &psRxTimes[ulReceivedPacketIndex],
                     &psReceiveBuffer[ulReceivedPacketIndex],
                     &psReceiveBuffer[ulReceivedPacketIndexPrevious],
-                    psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients);
+                    psWindowInformation, u64TransmitWindowsPerClient, u32TotalClients);
         }else{
             //This memcopy only occurs if per packet information is being gathered, the headers are not kept otherwise.
-            memcpy(&psReceivedPacketHeaders[i64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
+            memcpy(&psReceivedPacketHeaders[u64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
                     sizeof(struct UdpTestingPacketHeader));
         }
 
         //5.5 ***** Incrementing Packet Counter *****
-        i64ReceivedPacketsCount++;//Not counted in the case of a trailing packet
+        u64ReceivedPacketsCount++;//Not counted in the case of a trailing packet
     }
 
     printf("All Messages Received\n");
@@ -410,22 +410,22 @@ int main(int argc, char *argv[])
     }
     
     if(u8Combine == 0){
-        sStopTime = psRxTimes[i64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
+        sStopTime = psRxTimes[u64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
         getting system time here as trailing packets can take quite a while to arrive.
     }
 
     //6. ***** Analyse data, and calculate and display performance metrics *****
     if(u8Combine != 0)
     {
-        calculate_window_metrics_all_packets_received(psWindowInformation, u32TransmitWindowsPerClient, u32TotalClients,
+        calculate_window_metrics_all_packets_received(psWindowInformation, u64TransmitWindowsPerClient, u32TotalClients,
                 u8NoTerminal, pu8OutputFileName);
     }
     else
     {
         calculate_packet_metrics(sStopTime,sStartTime,psReceivedPacketHeaders,
-                psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
+                psRxTimes,u64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
     }
-    printf("Total Packets Sent: %ld, Total Packets Received: %ld\n", i64TotalSentPackets, i64ReceivedPacketsCount);
+    printf("Total Packets Sent: %ld, Total Packets Received: %ld\n", i64TotalSentPackets, u64ReceivedPacketsCount);
 
     //7. ***** Clean up *****
     free(pu8TrailingPacketReceived);
@@ -532,19 +532,19 @@ void calculate_packet_metrics(
 
         //ONly print this if enabled - for long tests, significant time can be wasted here.
         if(u8NoTerminal == 0){
-            printf("Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, " 
+            printf("Packet %ld Client %ld Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, " 
                     "Diff RX/RX %fs\n",
                     i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
                     psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
         //Do not write to plain text file if more than 1 GB of packet headers is receieved - it takes too long
         if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 1000000000){
-            fprintf(pTextFile,"Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, "
+            fprintf(pTextFile,"Packet %ld Client %ld Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, "
                     "Diff TX/TX %fs, Diff RX/RX %fs\n",
                     i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
                     psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
-        fprintf(pCsvFile,"%ld,%d,%ld,%ld,%f,%f\n",
+        fprintf(pCsvFile,"%ld,%ld,%ld,%ld,%f,%f\n",
                 i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex,
                 psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime);
 
@@ -618,7 +618,7 @@ void calculate_window_metrics_packet_received(
         struct UdpTestingPacket * sReceivedPacket,
         struct UdpTestingPacket * sPreviousReceivedPacket,
         struct WindowInformation * psWindowInformation,
-        uint32_t u32TransmitWindowsPerClient,
+        uint64_t u64TransmitWindowsPerClient,
         uint32_t u32TotalClients)
 {
     struct UdpTestingPacketHeader * sReceivedPacketHeader = &sReceivedPacket->sHeader;

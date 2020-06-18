@@ -186,7 +186,7 @@ int main()
         uint64_t u64TotalTransmitBytes = puNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
         double dDataRate_Gibps = ((double)u64TotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
         printf("Window %ld\n",i);
-        printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", 
+        printf("\tIt took %f seconds to transmit %ld bytes of data(%ld packets)\n", 
                 dTimeTaken_s,u64TotalTransmitBytes,puNumberOfPacketsSentPerWindow[i]);
         printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
     }
