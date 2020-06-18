@@ -41,7 +41,7 @@
 #define TOTAL_CLIENTS_DEFAULT 2 
 #define DONT_PRINT_TO_TERMINAL_DEFAULT 0
 #define COMBINE_DEFAULT 0
-#define FILE_NAME_DEFAULT "FunnelInTesting"
+#define FILE_NAME_DEFAULT "FunnelInTest"
 
 //This needs to be reworked
 #define MAXIMUM_NUMBER_OF_PACKETS   500000000 //Should be able to store about 30 minutes worth of headers at 10 Gbps
@@ -155,6 +155,8 @@ void calculate_window_metrics_packet_received(
  *  \param[in] psWindowInformation              Array of all structs containing per window statistics.
  *  \param[in] u32TransmitWindowsPerClient      The number of windows that each client must transmit.
  *  \param[in] u32TotalClients                  The number of transmitter clients that connect to this receiver server.
+ *  \param[in] u32TransmitWindowLength_us       Window length in microseconds.
+ *  \param[in] u32DeadTime_us                   Deadtime between windows in microseconds.
  *  \param[in] u8NoTerminal                     If 1 indicates that the program must disable printing window information
  *                                              to the terminal.
  *  \param[in] pi8OutputFileName                Name of the file to write to.
@@ -163,6 +165,8 @@ void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
         uint32_t u32TransmitWindowsPerClient,
         uint32_t u32TotalClients,
+        uint32_t u32TransmitWindowLength_us,
+        uint32_t u32DeadTime_us,
         uint8_t u8NoTerminal,
         char * pi8OutputFileName);
 
@@ -418,6 +422,7 @@ int main(int argc, char *argv[])
     if(u8Combine != 0)
     {
         calculate_window_metrics_all_packets_received(psWindowInformation, u64TransmitWindowsPerClient, u32TotalClients,
+                u32TransmitWindowLength_us, u32DeadTime_us,
                 u8NoTerminal, pu8OutputFileName);
     }
     else
@@ -705,6 +710,8 @@ void calculate_window_metrics_all_packets_received(
         struct WindowInformation * psWindowInformation,
         uint32_t u32TransmitWindowsPerClient,
         uint32_t u32TotalClients,
+        uint32_t u32TransmitWindowLength_us,
+        uint32_t u32DeadTime_us,
         uint8_t u8NoTerminal,
         char * pi8OutputFileName)
 {
@@ -712,11 +719,18 @@ void calculate_window_metrics_all_packets_received(
     FILE *pTextFile;
 
     //Configure output file names
-    char * pi8OutputFileNameCsv = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".csv") );
-    char * pi8OutputFileNameTxt = (char *) malloc(1 + strlen(pi8OutputFileName)+ strlen(".txt") );
-    strcat(pi8OutputFileNameCsv,pi8OutputFileName);
+    char pi8OutputFileNameBuilt[200];
+    memset(pi8OutputFileNameBuilt, 0, 200);
+    char pi8OutputFileNameCsv[200];
+    memset(pi8OutputFileNameCsv, 0, 200);
+    char pi8OutputFileNameTxt[200];
+    memset(pi8OutputFileNameTxt, 0, 200);
+    sprintf(pi8OutputFileNameBuilt,"%s_N%d_W%d_D%d_T%d",
+            pi8OutputFileName,u32TransmitWindowsPerClient,u32TransmitWindowLength_us,u32DeadTime_us,u32TotalClients);
+    
+    strcat(pi8OutputFileNameCsv,pi8OutputFileNameBuilt);
     strcat(pi8OutputFileNameCsv,".csv");
-    strcat(pi8OutputFileNameTxt,pi8OutputFileName);
+    strcat(pi8OutputFileNameTxt,pi8OutputFileNameBuilt);
     strcat(pi8OutputFileNameTxt,".txt");
     pCsvFile = fopen(pi8OutputFileNameCsv,"w");
     pTextFile = fopen(pi8OutputFileNameTxt,"w");
