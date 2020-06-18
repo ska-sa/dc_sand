@@ -292,11 +292,11 @@ int main(int argc, char *argv[])
                 u32DeadTime_us);
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec = 0;
         sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec = u32TransmitWindowLength_us;
-        sConfigurationPacket.i32DeadTime_us = u32DeadTime_us;
-        sConfigurationPacket.uNumberOfRepeats = u32TransmitWindowsPerClient;
-        sConfigurationPacket.uNumClients = u32TotalClients;
+        sConfigurationPacket.u64DeadTime_us = u32DeadTime_us;
+        sConfigurationPacket.u64NumberOfRepeats = u32TransmitWindowsPerClient;
+        sConfigurationPacket.u64NumClients = u32TotalClients;
         sConfigurationPacket.fWaitAfterStreamTransmitted_s = 1;
-        sConfigurationPacket.i32ClientIndex = i;
+        sConfigurationPacket.u64ClientIndex = i;
 
         sendto(iSocketFileDescriptor, (const struct MetadataPacketMaster *)&sConfigurationPacket, \
             sizeof(struct MetadataPacketMaster),  
@@ -309,8 +309,8 @@ int main(int argc, char *argv[])
     //5. ***** Receive data stream messages from client *****
     uint8_t * pu8TrailingPacketReceived = (uint8_t*) malloc(u32TotalClients*sizeof(uint8_t));
     memset(pu8TrailingPacketReceived,0,u32TotalClients*sizeof(uint8_t));
-    int * piTotalSentPacketsPerClient = (int *) malloc(u32TotalClients*sizeof(int));
-    memset(piTotalSentPacketsPerClient,0,u32TotalClients*sizeof(int));
+    uint64_t * pu64TotalSentPacketsPerClient = (uint64_t *) malloc(u32TotalClients*sizeof(uint64_t));
+    memset(pu64TotalSentPacketsPerClient,0,u32TotalClients*sizeof(int));
     
     printf("Starting Streaming\n");
     size_t ulReceivedPacketIndex;
@@ -345,14 +345,14 @@ int main(int argc, char *argv[])
         //This if-statement confirms end condition has been received - I think a better way to do this in the \
         future would be to just wait until a set time has passed and then send out-of-band messages to the clients \
         asking for meta data. This is not worth changing for now.
-        if(psReceiveBuffer[ulReceivedPacketIndex].sHeader.i32TrailingPacket != 0)
+        if(psReceiveBuffer[ulReceivedPacketIndex].sHeader.u32TrailingPacket != 0)
         {
-            int iClientIndex = psReceiveBuffer[ulReceivedPacketIndex].sHeader.i32ClientIndex;
+            int iClientIndex = psReceiveBuffer[ulReceivedPacketIndex].sHeader.u64ClientIndex;
             pu8TrailingPacketReceived[iClientIndex] = 1;
-            piTotalSentPacketsPerClient[iClientIndex] = 
-                    psReceiveBuffer[ulReceivedPacketIndex].sHeader.i64PacketsSent;
+            pu64TotalSentPacketsPerClient[iClientIndex] = 
+                    psReceiveBuffer[ulReceivedPacketIndex].sHeader.u64PacketsSent;
             printf("Trailing packet received indicating client %d has finished transmitting.\n",
-                    psReceiveBuffer[ulReceivedPacketIndex].sHeader.i32ClientIndex);
+                    psReceiveBuffer[ulReceivedPacketIndex].sHeader.u64ClientIndex);
             
             uint8_t u8End = 1;
             for (size_t i = 0; i < u32TotalClients; i++)
@@ -406,10 +406,8 @@ int main(int argc, char *argv[])
     int64_t i64TotalSentPackets = 0;
     for (size_t i = 0; i < u32TotalClients; i++)
     {
-        i64TotalSentPackets += piTotalSentPacketsPerClient[i];
+        i64TotalSentPackets += pu64TotalSentPacketsPerClient[i];
     }
-
-    printf("Total Packets Sent: %ld, Total Packets Received: %ld\n", i64TotalSentPackets, i64ReceivedPacketsCount);
     
     if(u8Combine == 0){
         sStopTime = psRxTimes[i64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
@@ -427,10 +425,11 @@ int main(int argc, char *argv[])
         calculate_packet_metrics(sStopTime,sStartTime,psReceivedPacketHeaders,
                 psRxTimes,i64ReceivedPacketsCount,i64TotalSentPackets,pu8OutputFileName,u8NoTerminal);
     }
+    printf("Total Packets Sent: %ld, Total Packets Received: %ld\n", i64TotalSentPackets, i64ReceivedPacketsCount);
 
     //7. ***** Clean up *****
     free(pu8TrailingPacketReceived);
-    free(piTotalSentPacketsPerClient);
+    free(pu64TotalSentPacketsPerClient);
     free(psCliAddrInit);
     free(psReceiveBuffer);
     free(psRxTimes);
@@ -485,8 +484,8 @@ void calculate_packet_metrics(
     uint8_t u8OutOfOrder = 0;
     for (size_t i = 0; i < i64ReceivedPacketsCount; i++)
     {
-        if(i != 0 && psReceivedPacketHeaders[i-1].i64PacketIndex > psReceivedPacketHeaders[i].i64PacketIndex 
-                && psReceivedPacketHeaders[i-1].i32ClientIndex == psReceivedPacketHeaders[i].i32ClientIndex)
+        if(i != 0 && psReceivedPacketHeaders[i-1].u64PacketIndex > psReceivedPacketHeaders[i].u64PacketIndex 
+                && psReceivedPacketHeaders[i-1].u64ClientIndex == psReceivedPacketHeaders[i].u64ClientIndex)
         {
             printf("Data received out of order\n");
             fprintf(pTextFile,"Data received out of order\n");
@@ -535,19 +534,19 @@ void calculate_packet_metrics(
         if(u8NoTerminal == 0){
             printf("Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, " 
                     "Diff RX/RX %fs\n",
-                    i, psReceivedPacketHeaders[i].i32ClientIndex, psReceivedPacketHeaders[i].i64TransmitWindowIndex, 
-                    psReceivedPacketHeaders[i].i64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+                    i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
+                    psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
         //Do not write to plain text file if more than 1 GB of packet headers is receieved - it takes too long
         if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 1000000000){
             fprintf(pTextFile,"Packet %ld Client %d Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, "
                     "Diff TX/TX %fs, Diff RX/RX %fs\n",
-                    i, psReceivedPacketHeaders[i].i32ClientIndex, psReceivedPacketHeaders[i].i64TransmitWindowIndex, 
-                    psReceivedPacketHeaders[i].i64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
+                    i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
+                    psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
         fprintf(pCsvFile,"%ld,%d,%ld,%ld,%f,%f\n",
-                i, psReceivedPacketHeaders[i].i32ClientIndex, psReceivedPacketHeaders[i].i64TransmitWindowIndex,
-                psReceivedPacketHeaders[i].i64PacketIndex, dTxTime, dRxTime);
+                i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex,
+                psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime);
 
         dRxTime_prev = dRxTime;
         dTxTime_prev = dTxTime;
@@ -623,8 +622,8 @@ void calculate_window_metrics_packet_received(
         uint32_t u32TotalClients)
 {
     struct UdpTestingPacketHeader * sReceivedPacketHeader = &sReceivedPacket->sHeader;
-    int64_t i64CurrentWindowIndex = sReceivedPacketHeader->i64TransmitWindowIndex * u32TotalClients
-            + sReceivedPacketHeader->i32ClientIndex;
+    int64_t i64CurrentWindowIndex = sReceivedPacketHeader->u64TransmitWindowIndex * u32TotalClients
+            + sReceivedPacketHeader->u64ClientIndex;
     struct WindowInformation * sCurrentWindow = &psWindowInformation[i64CurrentWindowIndex];
     
     //Calculate Transit time
@@ -640,9 +639,9 @@ void calculate_window_metrics_packet_received(
     {
         sCurrentWindow->sFirstRxTime = *sReceivedPacketReceivedTime;
         sCurrentWindow->sFirstTxTime = sReceivedPacketHeader->sTransmitTime;
-        sCurrentWindow->i64FirstPacketIndex = sReceivedPacketHeader->i64PacketIndex;
-        sCurrentWindow->i64TransmitWindowIndex = sReceivedPacketHeader->i64TransmitWindowIndex;
-        sCurrentWindow->i32ClientIndex = sReceivedPacketHeader->i32ClientIndex;
+        sCurrentWindow->i64FirstPacketIndex = sReceivedPacketHeader->u64PacketIndex;
+        sCurrentWindow->i64TransmitWindowIndex = sReceivedPacketHeader->u64TransmitWindowIndex;
+        sCurrentWindow->i32ClientIndex = sReceivedPacketHeader->u64ClientIndex;
         sCurrentWindow->dMaxTxRxDiff_s = dTransferTime;
         sCurrentWindow->dMinTxRxDiff_s = dTransferTime;
         sCurrentWindow->dAvgTxRxDiff_s = 0;
@@ -653,8 +652,8 @@ void calculate_window_metrics_packet_received(
         //Check that the previous packet is not from an unexpected different window - if it is, this means that an \
         unwanted packet overlap has occured
         struct UdpTestingPacketHeader * sPreviousPacketReceivedPacketHeader = &sPreviousReceivedPacket->sHeader;
-        int64_t i64PreviousPacketWindowIndex = sPreviousPacketReceivedPacketHeader->i64TransmitWindowIndex 
-            * u32TotalClients + sPreviousPacketReceivedPacketHeader->i32ClientIndex;
+        int64_t i64PreviousPacketWindowIndex = sPreviousPacketReceivedPacketHeader->u64TransmitWindowIndex 
+            * u32TotalClients + sPreviousPacketReceivedPacketHeader->u64ClientIndex;
         //printf("Packet Overlap: %ld %ld\n",i64PreviousPacketWindowIndex,i64CurrentWindowIndex);
         if(i64PreviousPacketWindowIndex < i64CurrentWindowIndex && i64CurrentWindowIndex != 0)
         {
@@ -669,7 +668,7 @@ void calculate_window_metrics_packet_received(
         if(i64PreviousPacketWindowIndex == i64CurrentWindowIndex)
         {   
             //Packet is missing and assumed dropped
-            int iPacketDifference = sReceivedPacketHeader->i64PacketIndex - sCurrentWindow->i64LastPacketIndex;
+            int iPacketDifference = sReceivedPacketHeader->u64PacketIndex - sCurrentWindow->i64LastPacketIndex;
             if(iPacketDifference != 1)
             {
                 //printf("Packet has been dropped\n");
@@ -677,7 +676,7 @@ void calculate_window_metrics_packet_received(
             }
 
             //Packet is received out of order - would be VERY suprised to see this in the current test set up
-            if(sReceivedPacketHeader->i64PacketIndex < sCurrentWindow->i64LastPacketIndex)
+            if(sReceivedPacketHeader->u64PacketIndex < sCurrentWindow->i64LastPacketIndex)
             {
                 printf("Packet Received out of order\n");
                 sCurrentWindow->i64OutOfOrderIndexes++;  
@@ -697,7 +696,7 @@ void calculate_window_metrics_packet_received(
     sCurrentWindow->dAvgTxRxDiff_s += dTransferTime;
     sCurrentWindow->sLastRxTime = *sReceivedPacketReceivedTime;
     sCurrentWindow->sLastTxTime = sReceivedPacketHeader->sTransmitTime;
-    sCurrentWindow->i64LastPacketIndex = sReceivedPacketHeader->i64PacketIndex;
+    sCurrentWindow->i64LastPacketIndex = sReceivedPacketHeader->u64PacketIndex;
     sCurrentWindow->i64PacketsReceived++;
 
 }

@@ -41,7 +41,7 @@ int main()
     struct UdpTestingPacket * psSendBuffer = malloc(ulMaximumTransmitBytes);
     for (size_t i = 0; i < NUMBER_RINGBUFFER_PACKETS; i++)
     {
-        psSendBuffer[i].sHeader.i32TrailingPacket = 0;
+        psSendBuffer[i].sHeader.u32TrailingPacket = 0;
     }
     
   
@@ -92,47 +92,48 @@ int main()
         return 1;
     }
     printf("Configuration Message Received from Server\n");
-    int iNumWindows = sConfigurationPacket.uNumberOfRepeats;
+    uint64_t u64NumWindows = sConfigurationPacket.u64NumberOfRepeats;
 
-    struct timeval * psStopTime = malloc(sizeof(struct timeval)*iNumWindows);
-    struct timeval * psStartTime = malloc(sizeof(struct timeval)*iNumWindows);
-    int *  piNumberOfPacketsSentPerWindow = malloc(sizeof(int)*iNumWindows);
-    int64_t i64NumPacketsSentTotal = 0;
+    struct timeval * psStopTime = malloc(sizeof(struct timeval)*u64NumWindows);
+    struct timeval * psStartTime = malloc(sizeof(struct timeval)*u64NumWindows);
+    uint64_t *  puNumberOfPacketsSentPerWindow = malloc(sizeof(uint64_t)*u64NumWindows);
+    uint64_t u64NumPacketsSentTotal = 0;
 
-    double dWindowTransmitTime = sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
+    double dWindowTransmitTime = (double)sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_sec + \
             ((double)(sConfigurationPacket.sSpecifiedTransmitTimeLength.tv_usec))/1000000.0;
-    double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.i32DeadTime_us) /1000000.0;
+    double dTimeBetweenWindows = dWindowTransmitTime + ((double)sConfigurationPacket.u64DeadTime_us) /1000000.0;
 
 
     printf("Transmitting Data...\n");
+    double dTimeToStart_s = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
+                ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
     //5. ***** Stream data to server - a number of windows have to be transferred *****
-    for (size_t i = 0; i < iNumWindows; i++)
+    for (size_t i = 0; i < u64NumWindows; i++)
     {
         //5.1 ***** Determine the time to wait until before transmitting current window. *****
-        double dTimeToStart_s = sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
-                ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
-        dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*i*sConfigurationPacket.uNumClients;
+        //Getting a weird overflow in some of my tests on the client side, converting everything to double to be safe
+        dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*(double)i*(double)sConfigurationPacket.u64NumClients;
 
         //5.2 ***** Wait until determined time. *****
         double dCurrentTime_s = 0;
         do
         {
             gettimeofday(&psStartTime[i], NULL);
-            dCurrentTime_s = psStartTime[i].tv_sec + ((double)psStartTime[i].tv_usec)/1000000.0;
+            dCurrentTime_s = (double)psStartTime[i].tv_sec + ((double)psStartTime[i].tv_usec)/1000000.0;
         } while(dTimeToStart_s > dCurrentTime_s);
 
         //5.3 ***** Transmit data contionusly for the entire window period. *****
-        piNumberOfPacketsSentPerWindow[i] = 0;
+        puNumberOfPacketsSentPerWindow[i] = 0;
         double dTransmittedTime_s = 0;
         double dEndTime = dTimeToStart_s + dWindowTransmitTime;
         do
         {
-            size_t ulPacketRingbufferIndex = i64NumPacketsSentTotal % NUMBER_RINGBUFFER_PACKETS;
+            size_t ulPacketRingbufferIndex = u64NumPacketsSentTotal % NUMBER_RINGBUFFER_PACKETS;
             //Fill in packet header data before transmitting
             gettimeofday(&psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime, NULL);
-            psSendBuffer[ulPacketRingbufferIndex].sHeader.i64PacketIndex = i64NumPacketsSentTotal;
-            psSendBuffer[ulPacketRingbufferIndex].sHeader.i64TransmitWindowIndex = i;
-            psSendBuffer[ulPacketRingbufferIndex].sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.u64PacketIndex = u64NumPacketsSentTotal;
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.u64TransmitWindowIndex = i;
+            psSendBuffer[ulPacketRingbufferIndex].sHeader.u64ClientIndex = sConfigurationPacket.u64ClientIndex;
 
             dTransmittedTime_s = (double)psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime.tv_sec + \
                     ((double)(psSendBuffer[ulPacketRingbufferIndex].sHeader.sTransmitTime.tv_usec))/1000000.0;
@@ -141,8 +142,8 @@ int main()
                     sizeof(struct UdpTestingPacket), 
                     0, (const struct sockaddr *) &sServAddr,  
                     sizeof(sServAddr)); 
-            piNumberOfPacketsSentPerWindow[i]++;
-            i64NumPacketsSentTotal++;
+            puNumberOfPacketsSentPerWindow[i]++;
+            u64NumPacketsSentTotal++;
             if(temp != sizeof(struct UdpTestingPacket))
             {
                 printf("Error Transmitting Data: %d",temp);
@@ -161,9 +162,9 @@ int main()
     sleep(sConfigurationPacket.fWaitAfterStreamTransmitted_s);
     printf("Transmitting Trailing Packets to server\n");
     struct UdpTestingPacket sTrailingPacket;
-    sTrailingPacket.sHeader.i32TrailingPacket = 1;
-    sTrailingPacket.sHeader.i64PacketsSent = i64NumPacketsSentTotal;
-    sTrailingPacket.sHeader.i32ClientIndex = sConfigurationPacket.i32ClientIndex;
+    sTrailingPacket.sHeader.u32TrailingPacket = 1;
+    sTrailingPacket.sHeader.u64PacketsSent = u64NumPacketsSentTotal;
+    sTrailingPacket.sHeader.u64ClientIndex = sConfigurationPacket.u64ClientIndex;
     //Transmit a few times to be safe - this is UDP after all
     for (size_t i = 0; i < 5; i++)
     {
@@ -178,15 +179,15 @@ int main()
     }
 
     //7 ***** Print out some useful diagnostic information *****
-    for (size_t i = 0; i < iNumWindows; i++)
+    for (size_t i = 0; i < u64NumWindows; i++)
     {
         double dTimeTaken_s = (psStopTime[i].tv_sec - psStartTime[i].tv_sec) + 
                 ((double)(psStopTime[i].tv_usec - psStartTime[i].tv_usec))/1000000;
-        int iTotalTransmitBytes = piNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
-        double dDataRate_Gibps = ((double)iTotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
+        uint64_t u64TotalTransmitBytes = puNumberOfPacketsSentPerWindow[i]*sizeof(struct UdpTestingPacket);
+        double dDataRate_Gibps = ((double)u64TotalTransmitBytes)*8.0/dTimeTaken_s/1024.0/1024.0/1024.0;
         printf("Window %ld\n",i);
         printf("\tIt took %f seconds to transmit %d bytes of data(%d packets)\n", 
-                dTimeTaken_s,iTotalTransmitBytes,piNumberOfPacketsSentPerWindow[i]);
+                dTimeTaken_s,u64TotalTransmitBytes,puNumberOfPacketsSentPerWindow[i]);
         printf("\tData Rate: %f Gibps\n",dDataRate_Gibps); 
     }
 

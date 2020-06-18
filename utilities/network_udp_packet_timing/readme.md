@@ -12,14 +12,34 @@ TODO
 
 # Maximising Performance
 
-TODO
+## Quick Summary
+
+This describes the minimum required to run the transmitters and receivers optimally. The details for each can be found
+in the sections below.
+
+For all transmitters and receivers:
+1. Put the nodes into a PTP pool as described the the Timing section below.
+2. Disable low power C-states in the bios.
+3. Ensure libvma is installed correctly as described in the libvma section below.
+4. Run: `ethtool -G <interface_name> rx 8192 tx 8192`
+
+Additional commands to run on the receiver:
+1. Run: `sudo ethtool -C <interface_name> adaptive-rx off rx-usecs 0 rx-frames 0` 
+
+Additional commands to run on the transmitter:
+1. Run: `sudo ethtool -C <interface_name> adaptive-tx off tx-usecs 16 tx-frames 16`
+
+To actually run the program the following commands must be executed:
+1. Receiver: `sudo LD_PRELOAD=libvma.so VMA-SELECT-POLL=-1 VMA_THREAD_MODE=0 VMA_SPEC=latency chrt 50 numactl 
+-N 0 -m 0 ./udp_receive -t 1 -n 100 -d 500 -w 100000 -o NetworkTestOutputFile`
+2. Transmitter: `sudo chrt 50 numactl -m 0 -N 0 ./udp_send`
 
 ## Useful Network Monitoring Commands
 1. ethtool
-    1. `sudo ethtool -c enp175s0d1` - View interrupt coalescing settings.
-    2. `sudo ethtool -a enp175s0d1` - Determine if link flow control is enabled.
-    3. `sudo ethtool -g enp175s0d1` - View network buffer sizes.
-    4. `sudo ethtool -S enp175s0d1` - View all NIC counters. Including TX/RX counters.
+    1. `sudo ethtool -c <interface_name>` - View interrupt coalescing settings.
+    2. `sudo ethtool -a <interface_name>` - Determine if link flow control is enabled.
+    3. `sudo ethtool -g <interface_name>` - View network buffer sizes.
+    4. `sudo ethtool -S <interface_name>` - View all NIC counters. Including TX/RX counters.
 2. `sudo netstat -neopa` - Display all process to socket/ip/port mappings.
 3. netstat
     1. `netstat -su` - Display all protocol specific counters. Does not seperate by interface.
@@ -28,13 +48,15 @@ TODO
 
 ## Ethtool NIC configuration commands
 
-1. `ethtool -G enp175s0d1 rx 8192 tx 8192` - Set network buffer sizes to prevent packets getting dropped due to buffer 
-    overflow. 8192 bytes is the maximum size on most current NICs.
-2. `sudo ethtool -C enp175s0d1 adaptive-tx off tx-usecs 16 tx-frames 16` - Set interrupt coalescing for TX parameters. 
-    Setting both usecs and frames to 16 seems to be the optimal setup on dbelab07. 
-3. `sudo ethtool -C enp175s0d1 adaptive-rx off rx-usecs 0 rx-frames 0` - Set interrupt coalescing for RX parameters. 
-    Setting receiver side rx-usecs and rx-frames to zero has resulted in the least packets being dropped by the 
-    receiver. This is specifically in the 10 Gbps domain. It is suspected that this may not hold up at the 100 Gbps 
+The following commands were used to configure the interface being used for the network tests:
+
+1. `ethtool -G <interface_name> rx 8192 tx 8192` - Set network buffer sizes to prevent packets getting dropped due to 
+    buffer overflow. 8192 bytes is the maximum size on most current NICs.
+2. `sudo ethtool -C <interface_name> adaptive-tx off tx-usecs 16 tx-frames 16` - Set interrupt coalescing for TX 
+    parameters. Setting both usecs and frames to 16 seems to be the optimal setup on dbelab07. 
+3. `sudo ethtool -C <interface_name> adaptive-rx off rx-usecs 0 rx-frames 0` - Set interrupt coalescing for RX 
+    parameters. Setting receiver side rx-usecs and rx-frames to zero has resulted in the least packets being dropped by 
+    the receiver. This is specifically in the 10 Gbps domain. It is suspected that this may not hold up at the 100 Gbps 
     rates.
 
 Here is a [link](https://access.redhat.com/sites/default/files/attachments/20150325_network_performance_tuning.pdf) to
@@ -84,10 +106,15 @@ than any userspace and most kernelspace programs:
 `sudo chrt 50 ./udp_send` (Higher value is higher priority)
 
 ## Timing 
-
 In order to transmit packets at precise time intervals, all nodes on the network need to agree on what the time is.
 
-#TODO
+By default, Ubuntu uses NTP to synchronise network tests. Ubuntu syncs times to a few global servers. This can lead to 
+the different servers being out of sync by a few milliseconds. This is uncomfortably high. To improve this, the nodes
+can be configured to synchronise to a local NTP server. The instructions to do this are described in point 1 below.
+
+Even using a local NTP server, times can be out by a few milliseconds. The PTP protocol achieves synchronisation within 
+a few tens of microseconds. All nodes can be put in a PTP pool and they negotiate a master node and all sync to that 
+node. The results from using PTP have been very promising. The steps to do this are described in point 2 below.
 
 1. ### NTP 
     1. Install NTP if it is not installed : `sudo apt-get install ntp`.
@@ -114,14 +141,16 @@ list of available NTP servers and that it has a "*" next to it indicating the ti
         6. In `/etc/ptpd.conf`, remove the `{% if ptp_mode == 'masterslave' %}`, `{% else %}` and `{% endif %}` Ansible 
         commands as well as the `ptpengine:preset=slaveonly` and `ptpengine:ntp_failover=n` between the `{% else %}` and
         `{% endif %}` commands. This will put all ptp servers into a single pool.
-        7. Start the ptp service: `sudo service ptpd restart`. Simply running `sudo service ptpd start` did not start 
-        the service correctly - only restart seemsed to work.
+        7. In `/etc/ptpd.conf` put the interface that all the ptp node will communicate over in the line 
+        `ptpengine:interface=`
+        8. Start the ptp service: `sudo service ptpd restart`. Simply running `sudo service ptpd start` did not start 
+        the service correctly - only restart seems to work.
         
 By tailing the log file `tail -f /var/log/ptp/ptpd.log` on the all the ptp servers in the pool, you should be able to 
 see the nodes select a master and send their first synchronisation messages to each other. 
 
 In the log directory the file `/var/log/ptp/status` for each slave will report on how in sync it is with the master.
-An offset of a few microseconds is expected `Offset from Master : -0.000000935 s, mean -0.000006777 s, dev  0.000013388 s`
+An offset of a few microseconds is expected.
 
 **NOTE:** This configuration keeps all PTP servers in a pool and in sync with each other, however they will drift from 
 global time. This is acceptable for the purposes of the timing tests as the nodes in the pool only need to be in sync 
@@ -156,12 +185,3 @@ website.
 Libvma improves performance so significantly on the receiver at 12 Gbps that the `numactl` and `chrt` commands become 
 unnecessary on smaller tests. The overnight tests have not been run without `numactl` or `chrt`, so the long term 
 stability without these commands is unknown. 
-
-## Putting it all together
-
-#TODO: Describe other configuration commands and seperate them out by receiver/transmitter and once off commands
-
-A number of commands are chained together to ensure the receiver is run as optimally as possible: 
-1. Receiver: `sudo LD_PRELOAD=libvma.so VMA-SELECT-POLL=-1 VMA_THREAD_MODE=0 VMA_SPEC=latency chrt 50 numactl 
--N 0 -m 0 ./udp_receive -t 1 -n 100 -d 500 -w 100000 -o NetworkTestOutputFile`
-2. Transmitter: `sudo LD_PRELOAD=libvma.so chrt 50 numactl -m 0 -N 0 ./udp_send`

@@ -22,17 +22,17 @@
  */
 struct UdpTestingPacketHeader{
     struct timeval sTransmitTime; //Time first packet in stream was sent
-    int64_t i64PacketIndex; //Index of the current packet in stream
-    int64_t i64PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
+    uint64_t u64PacketIndex; //Index of the current packet in stream
+    uint64_t u64PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
     At the moment this field is left blank in non-trailing packets
-    int32_t i32TrailingPacket; //Sometimes UDP streams drop data making it difficult to know when to stop receiving \
+    uint32_t u32TrailingPacket; //Sometimes UDP streams drop data making it difficult to know when to stop receiving \
     packets without having some sort of timeout/polling mechanism. Both of these incur additional costs/system calls. \
     For high bandwidth streaming this can result in additional packets being lost. For the purposes of this framework, \
     A few packets will be transmitted a long time after the end of the stream with this flag set to not zero. When the \
     receiver detects these signals, it know that sending is complete and to not pole any further.
-    int64_t i64TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
+    uint64_t u64TransmitWindowIndex;//A single client transmits over multiple windows. This value indicates the window \
     this packet was tranmitted in
-    int32_t i32ClientIndex; //The index of this client within the collection of clients
+    uint64_t u64ClientIndex; //The index of this client within the collection of clients
     
 };
 
@@ -52,10 +52,10 @@ struct MetadataPacketMaster{
     struct timeval sSpecifiedTransmitStartTime; //Time the client must start transmitting data.
     struct timeval sSpecifiedTransmitTimeLength; //Length of time client must transport data. (Not a clock time)
     float fWaitAfterStreamTransmitted_s; //Time to wait before sending trailing packets
-    uint32_t uNumberOfRepeats; //Number of times to repeate the tranmit window
-    uint32_t uNumClients; //Number of different clients transmitting data to the server.
-    uint32_t i32ClientIndex; //The server tells the client what its number is among all the clients
-    int32_t i32DeadTime_us; //The amount of space between clients where no data is being transferred
+    uint64_t u64NumberOfRepeats; //Number of times to repeate the tranmit window
+    uint64_t u64NumClients; //Number of different clients transmitting data to the server.
+    uint64_t u64ClientIndex; //The server tells the client what its number is among all the clients
+    uint64_t u64DeadTime_us; //The amount of space between clients where no data is being transferred
 };
 
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test. At the
