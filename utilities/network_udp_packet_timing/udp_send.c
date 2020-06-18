@@ -27,7 +27,7 @@
 
 #include "network_packets.h"
 
-#define SERVER_ADDRESS              "10.100.18.14"//TODO: Make a parameter
+#define SERVER_ADDRESS              "10.100.101.1"//TODO: Make a parameter
 #define LOCAL_ADDRESS               "127.0.0.1"//TODO: Make default value when now paramter is provided.
 #define NUMBER_RINGBUFFER_PACKETS   100000
 // Driver code 
@@ -105,13 +105,13 @@ int main()
 
 
     printf("Transmitting Data...\n");
-    double dTimeToStart_s = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
-                ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
     //5. ***** Stream data to server - a number of windows have to be transferred *****
     for (size_t i = 0; i < u64NumWindows; i++)
     {
         //5.1 ***** Determine the time to wait until before transmitting current window. *****
         //Getting a weird overflow in some of my tests on the client side, converting everything to double to be safe
+        double dTimeToStart_s = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
+                ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
         dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*(double)i*(double)sConfigurationPacket.u64NumClients;
 
         //5.2 ***** Wait until determined time. *****
