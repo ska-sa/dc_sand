@@ -748,9 +748,9 @@ void calculate_window_metrics_all_packets_received(
 
         //Write all data to file/terminal
         if(u8NoTerminal == 0){
-            printf("i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, Tx_Runtime: %f, " 
-                    "DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, "
-                    "Overlap Back %ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
+            printf("i: %8ld, Client: %2d,  Window: %8ld, Packets: %6ld, Missing: %6ld, Rx_Runtime: %f, Tx_Runtime: %f, " 
+                    "DataRate(Gibs): %5.2f, Avg Tx/Rx: %9.6f, Min Tx/Rx: %9.6f, Max Tx/Rx %9.6f, Overlap Front %6ld, "
+                    "Overlap Back %6ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
                     i,psWindowInformation[i].i32ClientIndex,
                     psWindowInformation[i].i64TransmitWindowIndex,
                     psWindowInformation[i].i64PacketsReceived,
@@ -765,9 +765,9 @@ void calculate_window_metrics_all_packets_received(
                     psWindowInformation[i].i64OverlappingWindowsBack,
                     dStartTimeTx_s, dEndTimeTx_s, dStartTimeRx_s, dEndTimeRx_s);
         }
-        fprintf(pTextFile,"i: %ld, Client: %d,  Window: %ld, Packets: %ld, Missing: %ld, Rx_Runtime: %f, "
-                "Tx_Runtime: %f, DataRate(Gibs): %f Avg Tx/Rx: %f, Min Tx/Rx: %f, Max Tx/Rx %f, Overlap Front %ld, "
-                "Overlap Back %ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
+        fprintf(pTextFile,"i: %8ld, Client: %2d,  Window: %8ld, Packets: %6ld, Missing: %6ld, Rx_Runtime: %f, "
+                "Tx_Runtime: %f, DataRate(Gibs): %5.2f, Avg Tx/Rx: %9.6f, Min Tx/Rx: %9.6f, Max Tx/Rx %9.6f, Overlap Front %6ld, "
+                "Overlap Back %6ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
                 i,psWindowInformation[i].i32ClientIndex,
                 psWindowInformation[i].i64TransmitWindowIndex,
                 psWindowInformation[i].i64PacketsReceived,
