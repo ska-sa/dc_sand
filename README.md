@@ -10,6 +10,8 @@ Execute doxygen in this directory in order to produce HTML-browseable documentat
 This repo includes configuration files for a Python pre-commit workflow that does the following when attempting to commit Python files to the repo:
 * auto-formats all .py and .pyi files
 * checks all .py and .pyi files for compliance to PEP8 style and standards
+* checks for compliance to Python docstring conventions (PEP257)
+* perfoms [mypy](https://mypy.readthedocs.io/en/stable/index.html) static type checking if static typing is used
 
 Commits will only succeed if all checks are passed.
 
