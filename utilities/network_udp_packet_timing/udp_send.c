@@ -61,10 +61,11 @@ int main()
       
     int iReceivedBytes, iSockAddressLength; 
 
-    //3. ***** Send Initial Message To Server and receive response*****
+    //3. ***** Send Initial Message To Server and receive response *****
     struct MetadataPacketClient sHelloPacket = {CLIENT_MESSAGE_HELLO,0};
     struct MetadataPacketMaster sConfigurationPacket;
     int iMessagesSent=0;
+    //Contionously send message until response is received
     while(1){
         sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, 
             sizeof(struct MetadataPacketClient), 
@@ -109,7 +110,8 @@ int main()
     for (size_t i = 0; i < u64NumWindows; i++)
     {
         //5.1 ***** Determine the time to wait until before transmitting current window. *****
-        //Getting a weird overflow in some of my tests on the client side, converting everything to double to be safe
+        //Was fetting an odd overflow in some of my tests on the client side, converting everything to double to be \
+        safe.
         double dTimeToStart_s = (double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_sec + \
                 ((double)sConfigurationPacket.sSpecifiedTransmitStartTime.tv_usec)/1000000.0;
         dTimeToStart_s = dTimeToStart_s + (dTimeBetweenWindows)*(double)i*(double)sConfigurationPacket.u64NumClients;
