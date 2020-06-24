@@ -20,7 +20,8 @@
  *  \ref UdpTestingPacket data payload. The size of the data payload in \ref UdpTestingPacket can instead be set to 
  *  data[PACKET_SIZE_BYTES-sizeof(struct UdpTestingPacketHeader).
  */
-struct UdpTestingPacketHeader{
+struct UdpTestingPacketHeader
+{
     struct timeval sTransmitTime; //Time first packet in stream was sent
     uint64_t u64PacketIndex; //Index of the current packet in stream
     uint64_t u64PacketsSent; //Slightly different from packet index - this can be kept constant in a trailing packet. \
@@ -39,7 +40,8 @@ struct UdpTestingPacketHeader{
 /** Packet that will be transmitted to the server. Contains dummy data and useful header data. See 
  *  \ref UdpTestingPacketHeader for more detail on how the size is kept consistent.
  */
-struct UdpTestingPacket{
+struct UdpTestingPacket
+{
     struct UdpTestingPacketHeader sHeader; // Header containing all useful data
     uint8_t u8Data[PACKET_SIZE_BYTES-sizeof(struct UdpTestingPacketHeader)]; //Dummy data to be part of the packet
 };
@@ -47,7 +49,8 @@ struct UdpTestingPacket{
 
 /** Metadata packet that will be transmitted out of band from the server to the client for configuring the test
  */
-struct MetadataPacketMaster{
+struct MetadataPacketMaster
+{
     uint32_t u32MetadataPacketCode; //Code specifying the type of metadata within the packet
     struct timeval sSpecifiedTransmitStartTime; //Time the client must start transmitting data.
     struct timeval sSpecifiedTransmitTimeLength; //Length of time client must transport data. (Not a clock time)
@@ -61,7 +64,8 @@ struct MetadataPacketMaster{
 /** Metadata packet that will be transmitted out of band from the client to the server for configuring the test. At the
  * moment nothing useful is transmitted, however this struct can easily be extended.
  */
-struct MetadataPacketClient{
+struct MetadataPacketClient
+{
     uint32_t u32MetadataPacketCode; //Code specifying the type of metadata within the packet
     float fTransmitTimeClient_ms; //Not used currently
 };

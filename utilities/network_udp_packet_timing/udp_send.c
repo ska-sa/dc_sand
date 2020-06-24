@@ -66,7 +66,8 @@ int main()
     struct MetadataPacketMaster sConfigurationPacket;
     int iMessagesSent=0;
     //Contionously send message until response is received
-    while(1){
+    while(1)
+    {
         sendto(iSocketFileDescriptor, (const struct MetadataPacketClient *)&sHelloPacket, 
             sizeof(struct MetadataPacketClient), 
             MSG_CONFIRM, (const struct sockaddr *) &sServAddr,  
@@ -81,7 +82,8 @@ int main()
                     MSG_DONTWAIT, (struct sockaddr *) &sServAddr, 
                     &iSockAddressLength);
         
-        if(iReceivedBytes != -1){
+        if(iReceivedBytes != -1)
+        {
             break;
         }
     }

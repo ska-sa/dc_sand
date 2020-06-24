@@ -186,7 +186,8 @@ int main(int argc, char *argv[])
 
     int iRet = parse_cmd_parameters(argc, argv, &pu8OutputFileName, &u32TransmitWindowLength_us, 
             &u32DeadTime_us, &u64TransmitWindowsPerClient, &u32TotalClients, &u8NoTerminal, &u8Combine);
-    if(iRet != 0){
+    if(iRet != 0)
+    {
         return 0;
     }
 
@@ -272,7 +273,8 @@ int main(int argc, char *argv[])
             u8Duplicate = 0;
             for (size_t j = 0; j < i; j++)
             {
-                if(psCliAddrInit[i].sin_addr.s_addr == psCliAddrInit[j].sin_addr.s_addr){
+                if(psCliAddrInit[i].sin_addr.s_addr == psCliAddrInit[j].sin_addr.s_addr)
+                {
                     printf("Hello message Already received from client with this address\n");
                     u8Duplicate = 1;
                 }
@@ -364,13 +366,15 @@ int main(int argc, char *argv[])
             uint8_t u8End = 1;
             for (size_t i = 0; i < u32TotalClients; i++)
             {
-                if(pu8TrailingPacketReceived[i] == 0){
+                if(pu8TrailingPacketReceived[i] == 0)
+                {
                     u8End = 0;
                     break;
                 }
             }
             
-            if(u8End == 1){
+            if(u8End == 1)
+            {
                 break;
             }
             continue;
@@ -384,11 +388,15 @@ int main(int argc, char *argv[])
 
         //5.4 ***** This section prepares the data so that it can be used for analysis - This can is different \
         depending on whether per window or per packet information is being gathered *****
-        if(u8Combine != 0){
+        if(u8Combine != 0)
+        {
             size_t ulReceivedPacketIndexPrevious;
-            if(ulReceivedPacketIndex != 0){
+            if(ulReceivedPacketIndex != 0)
+            {
                 ulReceivedPacketIndexPrevious = ulReceivedPacketIndex - 1;
-            }else{
+            }
+            else
+            {
                 ulReceivedPacketIndexPrevious = NUMBER_RINGBUFFER_PACKETS-1;
             }
             calculate_window_metrics_packet_received(
@@ -396,7 +404,9 @@ int main(int argc, char *argv[])
                     &psReceiveBuffer[ulReceivedPacketIndex],
                     &psReceiveBuffer[ulReceivedPacketIndexPrevious],
                     psWindowInformation, u64TransmitWindowsPerClient, u32TotalClients);
-        }else{
+        }
+        else
+        {
             //This memcopy only occurs if per packet information is being gathered, the headers are not kept otherwise.
             memcpy(&psReceivedPacketHeaders[u64ReceivedPacketsCount],&psReceiveBuffer[ulReceivedPacketIndex].sHeader,
                     sizeof(struct UdpTestingPacketHeader));
@@ -416,7 +426,8 @@ int main(int argc, char *argv[])
         i64TotalSentPackets += pu64TotalSentPacketsPerClient[i];
     }
     
-    if(u8Combine == 0){
+    if(u8Combine == 0)
+    {
         sStopTime = psRxTimes[u64ReceivedPacketsCount-1]; //Set stop time equal to last received packet - not simply \
         getting system time here as trailing packets can take quite a while to arrive.
     }
@@ -441,7 +452,8 @@ int main(int argc, char *argv[])
     free(psCliAddrInit);
     free(psReceiveBuffer);
     free(psRxTimes);
-    if(u8Combine != 0){
+    if(u8Combine != 0)
+    {
         free(psWindowInformation);
     }
     else
@@ -548,14 +560,16 @@ void calculate_packet_metrics(
         }
 
         //ONly print this if enabled - for long tests, significant time can be wasted here.
-        if(u8NoTerminal == 0){
+        if(u8NoTerminal == 0)
+        {
             printf("Packet %ld Client %ld Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, Diff TX/TX %fs, " 
                     "Diff RX/RX %fs\n",
                     i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
                     psReceivedPacketHeaders[i].u64PacketIndex, dTxTime, dRxTime, dDiffRxTx, dDiffTxTx, dDiffRxRx);
         }
         //Do not write to plain text file if more than 1 GB of packet headers is receieved - it takes too long
-        if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 1000000000){
+        if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 1000000000)
+        {
             fprintf(pTextFile,"Packet %ld Client %ld Window %ld Client Packet ID %ld TX %fs, RX %fs, Diff RX/TX %fs, "
                     "Diff TX/TX %fs, Diff RX/RX %fs\n",
                     i, psReceivedPacketHeaders[i].u64ClientIndex, psReceivedPacketHeaders[i].u64TransmitWindowIndex, 
@@ -569,7 +583,8 @@ void calculate_packet_metrics(
         dTxTime_prev = dTxTime;
     }
     
-    if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 100000000){
+    if(i64ReceivedPacketsCount * sizeof(struct UdpTestingPacketHeader) < 100000000)
+    {
         fprintf(pTextFile,"Raw packet Values not written to this file to preserve disk space.");
     }
 
@@ -699,7 +714,8 @@ void calculate_window_metrics_packet_received(
     }
 
     //Check if this is a new maximum/minimum transit time
-    if(sCurrentWindow->dMaxTxRxDiff_s < dTransferTime){
+    if(sCurrentWindow->dMaxTxRxDiff_s < dTransferTime)
+    {
         sCurrentWindow->dMaxTxRxDiff_s = dTransferTime;
     }
     if(sCurrentWindow->dMinTxRxDiff_s > dTransferTime)
@@ -773,7 +789,8 @@ void calculate_window_metrics_all_packets_received(
                     psWindowInformation[i].dAvgTxRxDiff_s/((double)psWindowInformation[i].i64PacketsReceived);
 
         //Write all data to file/terminal
-        if(u8NoTerminal == 0){
+        if(u8NoTerminal == 0)
+        {
             printf("i: %8ld, Client: %2d,  Window: %8ld, Packets: %6ld, Missing: %6ld, Rx_Runtime: %f, Tx_Runtime: %f, " 
                     "DataRate(Gibs): %5.2f, Avg Tx/Rx: %9.6f, Min Tx/Rx: %9.6f, Max Tx/Rx %9.6f, Overlap Front %6ld, "
                     "Overlap Back %6ld, Start Tx %f, End Tx %f, Start Rx %f, End Rx %f\n",
@@ -917,7 +934,8 @@ int parse_cmd_parameters(
 
     // optind is for the extra arguments 
     // which are not parsed 
-    for(; optind < argc; optind++){      
+    for(; optind < argc; optind++)
+    {      
         printf("extra arguments: %s\n", argv[optind]); 
         return 1; 
     } 
