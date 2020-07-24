@@ -48,7 +48,7 @@ async def make_a_request(*args):
 class TestCorr3Servlet:
     """Class for grouping Corr3Servlet tests."""
 
-    def test_beam_weights(self, corr3_servlet, event_loop):
+    def test_beam_weights(self, corr3_servlet_test_fixture, event_loop):
         """Test a properly-formed ?beam-weights request."""
         reply = event_loop.run_until_complete(
             make_a_request("beam-weights", "tied-array-channelised-voltage", "1", "2", "3", "4")
@@ -56,7 +56,7 @@ class TestCorr3Servlet:
         # TODO: test whether the servlet passes the info on to the individual engines.
         #      This will require more infrastructure from the test fixture I think. Or another fixture.
 
-    def test_beam_weights_wrong_numbers(self, corr3_servlet, event_loop):
+    def test_beam_weights_wrong_numbers(self, corr3_servlet_test_fixture, event_loop):
         """Test a ?beam-weights request with the wrong number of weights being passed."""
         # This context manager tells `pytest` that we expect an exception to be raised.
         with pytest.raises(aiokatcp.connection.FailReply):
@@ -64,7 +64,7 @@ class TestCorr3Servlet:
                 make_a_request("beam-weights", "tied-array-channelised-voltage", "1", "2", "3")
             )  # Only 3 weights, 4 expected.
 
-    def test_beam_weights_wrong_stream(self, corr3_servlet, event_loop):
+    def test_beam_weights_wrong_stream(self, corr3_servlet_test_fixture, event_loop):
         """Test a ?beam-weights request with the wrong data-stream being passed."""
         reply = event_loop.run_until_complete(
             make_a_request("beam-weights", "baseline-correlation-products", "1", "2", "3", "4")  # i.e. not t-a-c-v.
