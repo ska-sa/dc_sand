@@ -20,6 +20,11 @@ class FakeNode(aiokatcp.DeviceServer):
     VERSION = "version"
     BUILD_STATE = "build-state"
 
+    def __init__(self, *args, **kwargs):
+        """Override the default to set up some values hopefully useful for unit-testing."""
+        self.beam_weights_set = False
+        super(FakeNode, self).__init__(*args, **kwargs)
+
     async def start(self, *args, **kwargs):
         """Override base method in order to print the port we're on. For debug."""
         print(f"Starting FakeNode server on port {self._port}")
@@ -42,7 +47,7 @@ class FakeNode(aiokatcp.DeviceServer):
     async def request_beam_weights(self, ctx, data_stream, *weights):
         """Load weights for all inputs on a specified beam data-stream."""
         print("Received the beam-weights request.")
-        # TODO: Perhaps set some kind of member property that can subsequently be `assert`ed by a unit test.
+        self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
 
 async def main():
