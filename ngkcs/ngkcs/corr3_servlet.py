@@ -7,7 +7,15 @@ a bunch of other DeviceServers, which represent hypothetical processing nodes.
 """
 
 import aiokatcp
-from typing import List, Tuple
+from typing import (
+    List,
+    Tuple,
+)
+
+from ngkcs.cbf_subarray_product import (
+    DeviceStatus,
+    device_status_to_sensor_status,
+)
 
 
 class Corr3Servlet(aiokatcp.DeviceServer):
@@ -51,7 +59,18 @@ class Corr3Servlet(aiokatcp.DeviceServer):
         self.n_antennas = n_antennas
         self.x_engine_endpoints = x_engine_endpoints  # Since this is POC code, we are not doing any data validation.
         self.x_engine_clients: List[aiokatcp.Client] = []
+
         super(Corr3Servlet, self).__init__(host=host, port=port, **kwargs)
+
+        self.sensors.add(
+            aiokatcp.Sensor(
+                DeviceStatus,
+                "device-status",
+                "Devices status of the Corr3Servlet",
+                default=DeviceStatus.OK,
+                status_func=device_status_to_sensor_status,
+            )
+        )
 
     async def start(self):
         """Do the usual startup stuff plus initiating connections to DSP nodes.
