@@ -2,10 +2,10 @@
 
 # Compiler and linker
 CC := nvcc
-CCFLAGS := -arch=sm_70 --ptxas-options=-v
+CCFLAGS := -arch=sm_61 --ptxas-options=-v
 
 # Target executable program
-TARGET = VectorAddTest
+TARGET = VectorReduceComplexTest
 
 INCDIR := ../common
 
@@ -22,4 +22,4 @@ $(TARGET):
 	$(CC) $(CCFLAGS) -o $(TARGET) -I $(INCDIR) $(CUDAINC) -L $(INCDIR) *.cpp *.cu $(INCDIR)/*.cpp
 
 clean:
-	rm -f VectorAddTest *.o
+	rm -f VectorReduceComplexTest *.o
