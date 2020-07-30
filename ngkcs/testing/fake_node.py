@@ -24,6 +24,9 @@ class FakeNode(aiokatcp.DeviceServer):
         """Override the default to set up some values hopefully useful for unit-testing."""
         self.beam_weights_set = False
         super(FakeNode, self).__init__(*args, **kwargs)
+        # Add a fake "device-status" sensor to tweak.
+        test_sensor = aiokatcp.Sensor(str, "device-status", "B-engine LRU ok", units="boolean", default="default")
+        self.sensors.add(test_sensor)
 
     async def start(self, *args, **kwargs):
         """Override base method in order to print the port we're on. For debug."""
@@ -49,15 +52,28 @@ class FakeNode(aiokatcp.DeviceServer):
         print("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
+    def modify_device_status_sensor(self, new_value: str):
+        """Modify the fake sensor.
+        
+        This is for a test fixture to be able to make changes and see whether they propagate.
+        """
+        self.sensors["device-status"].value = new_value
+
 
 async def main():
-    """Execute the program. Go on, hop to."""
+    """Execute the program. Go on, hop to.
+
+    We include this functionality as a conveniecnce to the consumer who may benefit in some way from the ability
+    to run this fake node as a standalone thing, rather than as a component of a unit test.
+    """
     port = 1234
     if len(sys.argv) >= 2:  # Crude primitive arg parsing.
         port = sys.argv[1]
     server = FakeNode("0.0.0.0", port)
+    for attr in dir(server.sensors["device-status"]):
+        print(f": {(attr)}")
     await server.start()
-    await server.join()  # Technically not really needed,
+    await server.join()  # Technically not really needed, as there's no cleanup afterwards as things currently stand.
 
 
 if __name__ == "__main__":
