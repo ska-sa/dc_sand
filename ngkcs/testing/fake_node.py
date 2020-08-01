@@ -6,9 +6,12 @@ actually connecting to another katcp device server and passing messages forward.
 Pass the port to run the server on as an argument. Or don't, and it'll default to 1234.
 """
 import logging
+import os
 import sys
 import asyncio
 import aiokatcp
+from configparser import ConfigParser
+from typing import Type
 
 from aiokatcp import (
     FailReply,
@@ -17,11 +20,40 @@ from aiokatcp import (
 from ngkcs.cbf_subarray_product import (
     DeviceStatus,
     ProductState,
+    CBFSubarrayProductBase,
+    CBFSubarrayProductInterface,
     device_status_to_sensor_status,
 )
 
 LOCALHOST = "127.0.0.1"
 DEFAULT_PORT = 5678
+logger = logging.getLogger(__name__)
+logging.basicConfig()
+
+
+def parse_config_file(config_file=""):
+    """
+    Parse an config file into a dictionary. No checking done at all.
+    
+    Placing it here for now - will eventually be moved into a utils.py.
+
+    :param config_file: the config file to process
+    :param required_sections: sections that MUST be included
+    :return: a dictionary containing the configuration
+    """
+    parser = ConfigParser()
+    files = parser.read(config_file)
+    if len(files) == 0:
+        raise IOError("Could not read the config file, %s" % config_file)
+
+    config_dict = {}
+
+    for section in parser.sections():
+        config_dict[section] = {}
+        for items in parser.items(section):
+            config_dict[section][items[0]] = items[1]
+
+    return config_dict
 
 
 class FakeNode(aiokatcp.DeviceServer):
@@ -38,19 +70,18 @@ class FakeNode(aiokatcp.DeviceServer):
         self,
         host: str = LOCALHOST,
         port: int = DEFAULT_PORT,
-        product_id: str = None,
+        # product_id: str = None,
         cbf_servlet: aiokatcp.Client = None,  # Defaulting to None, for now
         shutdown_delay: float = 7.0,  # Delay before completing ?halt
         *args,
         **kwargs,
     ):
-        """Override the default to set up some values hopefully useful for unit-testing."""
-        self.product_id = "product1" if product_id is None else product_id.lower()
+        """Initialise the FakeNode DeviceServer with the necessary properties."""
         self.product = None
         self.cbf_servlet = cbf_servlet
         self.shutdown_delay = shutdown_delay
-        self.logger = logging.getLogger(name=self.product_id)
-        logging.basicConfig()  # For now
+        # self.logger = logging.getLogger(name=self.product_id)
+        # logging.basicConfig()  # For now
 
         super(FakeNode, self).__init__(host, port=port, *args, **kwargs)
 
@@ -76,11 +107,11 @@ class FakeNode(aiokatcp.DeviceServer):
         # await self._consul_deregister()
         # self._prometheus_watcher.close()
         if self.product is not None and self.product.state != ProductState.DEAD:
-            self.logger.warning("Product controller interrupted - deconfiguring running product")
+            logger.warning("Product controller interrupted - deconfiguring running product")
             try:
                 await self.product.deconfigure(force=True)
             except Exception:
-                self.logger.warning("Failed to deconfigure product %s during shutdown", exc_info=True)
+                logger.warning("Failed to deconfigure product %s during shutdown", exc_info=True)
 
     async def _client_connected_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Provide debug info concerning new connections that the base doesn't give.
@@ -101,7 +132,7 @@ class FakeNode(aiokatcp.DeviceServer):
         print("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
-    async def request_product_configure(self, ctx, name: str, config: str) -> None:
+    async def request_product_configure(self, ctx, product_name: str, config_filename: str) -> None:
         """
         Configure a CBF Subarray product instance.
 
@@ -109,23 +140,37 @@ class FakeNode(aiokatcp.DeviceServer):
         ----------
         name : str
             Name of the subarray product.
-        config : str
-            A JSON-encoded dictionary of configuration data.
+        config_filename : str
+            Traditional corr2 config-file filename, for now
         """
         print(f"?product-configure called with: {ctx.req}")
+
+        config_dict = None
 
         if self.product is not None:
             raise FailReply("Already configured or configuring")
         try:
-            self.logger.debug(f"Trying to create and configure product {self.product_id}")
+            # self.product_id = "product1" if product_id is None else product_id.lower()
+            logger.debug(f"Trying to create and configure product {product_name.lower()}")
+
+            # Check if the config-file exists
+            abs_path = os.path.abspath(config_filename)
+            if not os.path.exists(abs_path):
+                # Problem
+                errmsg = "Config-file {} is not valid".format(config_filename)
+                logger.error(errmsg)
+                FailReply(errmsg)
+            # else: Continue!
+            config_dict = parse_config_file(abs_path)
+            # Now, pass it on to the actual configure_product command!
+            await self.configure_product(name=product_name.lower(), config_dict=config_dict)
+
         except Exception as exc:
             retmsg = f"Failed to process config: {exc}"
-            self.logger.error(retmsg)
+            logger.error(retmsg)
             raise FailReply(retmsg) from exc
 
-        await self.configure_product(name, config)
-
-    async def configure_product(self, name: str, config: str) -> None:
+    async def configure_product(self, name: str, config_dict: dict) -> None:
         """
         Configure a subarray product in response to a request.
 
@@ -150,11 +195,29 @@ class FakeNode(aiokatcp.DeviceServer):
             Final name of the subarray-product.
 
         """
-        self.logger.debug(f"Received config data: {config}")
+
+        def dead_callback(product):
+            if self.shutdown_delay > 0:
+                logger.info("Sleeping %.1f seconds to give time for final tasks to complete", self.shutdown_delay)
+                asyncio.get_event_loop().call_later(self.shutdown_delay, self.halt, False)
+            else:
+                self.halt(False)
+
+        logger.debug(f"Received config data: {config_dict}")
 
         asyncio.sleep(0.5)
 
         # Create CBFSubarrayProduct in 'interface mode'
+        product_cls: Type[CBFSubarrayProductBase] = CBFSubarrayProductInterface
+        product = product_cls(subarray_product_id=name, config=config_dict, product_controller=self)
+        self.product = product
+        self.product.dead_callbacks.append(dead_callback)
+
+        try:
+            await self.product.configure()
+        except Exception:
+            self.product = None
+            raise
 
     def _get_product(self):  # -> CBFSubarrayProductBase:
         """Check that self.product exists (i.e. ?product-configure has been called).
