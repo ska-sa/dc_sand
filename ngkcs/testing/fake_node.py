@@ -70,8 +70,6 @@ async def main():
     if len(sys.argv) >= 2:  # Crude primitive arg parsing.
         port = sys.argv[1]
     server = FakeNode("0.0.0.0", port)
-    for attr in dir(server.sensors["device-status"]):
-        print(f": {(attr)}")
     await server.start()
     await server.join()  # Technically not really needed, as there's no cleanup afterwards as things currently stand.
 
