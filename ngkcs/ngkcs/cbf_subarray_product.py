@@ -104,7 +104,7 @@ class CaptureBlock:
     However, note that processing on it continues after the capture-done.
     """
 
-    def __init__(self, name: str, config: dict) -> None:
+    def __init__(self, name: str, config: dict):
         """Init method for the CaptureBlock."""
         self.name = name
         self.config = config
