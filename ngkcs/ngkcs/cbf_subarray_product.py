@@ -172,7 +172,7 @@ class CBFSubarrayProductBase:
     forced deconfiguration to abort them.
     """
 
-    def __init__(self, subarray_product_id: str, config: dict, product_controller: aiokatcp.DeviceServer) -> None:
+    def __init__(self, subarray_product_id: str, config: dict, product_controller: aiokatcp.DeviceServer):
         """
         Initialise the Base class with the minimum-required arguments.
         
@@ -417,7 +417,7 @@ class CBFSubarrayProductBase:
 class InterfaceModeSensors:
     """aiokatcp.Sensors created for interfacing with a CBFSubarrayProductInterface instance."""
 
-    def __init__(self, subarray_product_id: str) -> None:
+    def __init__(self, subarray_product_id: str):
         """Manage dummy subarray product sensors on a DeviceServer instance.
 
         Parameters
@@ -483,7 +483,7 @@ class InterfaceModeSensors:
 class CBFSubarrayProductInterface(CBFSubarrayProductBase):
     """Dummy implementation of CBFSubarrayProductBase interface that does not actually run anything."""
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs):
         """Create object in interface-mode."""
         super().__init__(*args, **kwargs)
         self._interface_mode_sensors = InterfaceModeSensors(self.subarray_product_id)
