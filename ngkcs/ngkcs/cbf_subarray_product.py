@@ -4,6 +4,7 @@ import asyncio
 import logging
 import json
 import time
+import docker
 
 from typing import Dict, Set, List, Callable, Optional
 
@@ -186,6 +187,7 @@ class CBFSubarrayProductBase:
             The parent server that interfaces with CAM
         """
         self._async_task: Optional[asyncio.Task] = None  #: Current background task (can only be one)
+        self.docker_client = docker.from_env()
 
         self.config = config
         self.subarray_product_id = subarray_product_id
@@ -373,12 +375,20 @@ class CBFSubarrayProductBase:
     async def deconfigure(self, force: bool = False, ready: asyncio.Event = None):
         """Deconfigure command to satisfy the parent DeviceServer on_stop() command."""
         # Obviously need to call _deconfigure, which further calls deconfigure_impl
-        self.state = ProductState.DECONFIGURING
+        if self.state == ProductState.DEAD:
+            # Deed has already been done
+            return
+
+        task = asyncio.get_event_loop().create_task(self._deconfigure(force, ready))
+        self._async_task = task
+        try:
+            await task
+        finally:
+            self._clear_async_task(task)
+        logger.info("Subarray product %s successfully deconfigured", self.subarray_product_id)
+
         return True
 
-        # if self.state == ProductState.DEAD:
-        #     # Deed has already been done
-        #     return
         # if self.async_busy:
         #     if not force:
         #         self._fail_if_busy()
@@ -513,6 +523,10 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
         logger.warning("No components will be started - running in interface mode")
         # Add dummy sensors for this product
         self._interface_mode_sensors.add_sensors(self.product_controller)
+        # Start an example docker image in detached mode
+        # - Will need to pass through a name and config details (eventually)
+        # - This example constantly logs the message 'Reticulating Spine {i}', where 'i' increments
+        self.container = self.docker_client.containers.run("bfirsh/reticulate-splines", detach=True)
 
     async def capture_init_impl(self, capture_block: CaptureBlock) -> None:
         """Update CaptureBlock in Interface-mode."""
@@ -521,3 +535,6 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
     async def deconfigure_impl(self, force: bool, ready: asyncio.Event = None) -> None:
         """Initiate Deconfigure in Interface-mode."""
         self._interface_mode_sensors.remove_sensors(self.product_controller)
+        # Stop the docker container
+        # - Unfortunately the container.status doesn't really change from 'created'
+        self.container.stop()
