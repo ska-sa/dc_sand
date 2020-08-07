@@ -144,7 +144,7 @@ class Corr3Servlet(aiokatcp.DeviceServer):
 
         # For the time being, we are assuming that the B-engines understand pretty much the same request.
         for client_no, client in enumerate(self.x_engine_clients):
-            print(f"Forwarding the ?beam-weight message to client no {client_no}")
+            logging.debug(f"Forwarding the ?beam-weight message to client no {client_no}")
             _reply, _informs = await client.request("beam-weights", data_stream, *weights)
 
         # TODO: The ICD says "the explanation describes the current weights applied to the inputs of a specific beam".

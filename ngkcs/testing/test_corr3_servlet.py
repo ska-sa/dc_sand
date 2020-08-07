@@ -2,8 +2,9 @@
 
 import pytest
 import asyncio
-from ngkcs.corr3_servlet import Corr3Servlet
+import logging
 import aiokatcp
+from ngkcs.corr3_servlet import Corr3Servlet
 from fake_node import FakeNode
 
 CORR3_SERVLET_PORT = 7404
@@ -96,7 +97,7 @@ class TestCorr3Servlet:
         for fake_device_server in corr3_servlet_test_fixture:
             assert not fake_device_server.beam_weights_set
 
-    def test_sensor_propagation(self, corr3_servlet_test_fixture, event_loop):
+    def test_sensor_propagation(self, corr3_servlet_test_fixture, event_loop, capfd):
         """Test that the sensor values presented by the nodes are propagated to the servlet.
         
         I'm not sure that this function-within-a-function approach is the best way to go about this
@@ -111,12 +112,18 @@ class TestCorr3Servlet:
             at least verify that the mechanism works. Ideally it should be parameterised, but I haven't gotten
             around to understanding properly how to do that with pytest yet.
             """
+
+            _reply, informs = await make_a_request("sensor-value")
+            logging.info("Let's check what the initial sensor-values are:")
+            for inform in informs:
+                logging.info(" ".join(arg.decode() for arg in inform.arguments))
             # I'm going to assume that we are testing just node1 (there should be from node0 to node3 available.)
             _reply, informs = await make_a_request("sensor-value", "node1.device-status")
             initial_timestamp = float(informs[0].arguments[0])  # First field in the inform is a UNIX timestamp
             assert informs[0].arguments[2] == b"node1.device-status"  # sensor-name
             assert informs[0].arguments[3] == b"unknown"  # sensor status. This should be "unknown" to start with.
-            assert informs[0].arguments[4] == b"default"  # The actual sensor value.
+            # The actual sensor-value if it hasn't gotten enough time to set up yet could either be empty or "default".
+            assert informs[0].arguments[4] == b"" or b"default"
 
             # Let a little bit of time pass so that we can test the timestamp mechanism
             await asyncio.sleep(0.1)
@@ -124,6 +131,11 @@ class TestCorr3Servlet:
             # I'm not quite sure of the best way to address specific fake-nodes so we will do them all.
             for fake_device_server in corr3_servlet_test_fixture:
                 fake_device_server.modify_device_status_sensor("changed")
+
+            logging.info("After the change, this is the response to `?sensor-value`:")
+            _reply, informs = await make_a_request("sensor-value")
+            for inform in informs:
+                logging.info(" ".join(arg.decode() for arg in inform.arguments))
 
             _reply, informs = await make_a_request("sensor-value", "node1.device-status")
             final_timestamp = float(informs[0].arguments[0])

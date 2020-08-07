@@ -8,12 +8,13 @@ Pass the port to run the server on as an argument. Or don't, and it'll default t
 import asyncio
 import aiokatcp
 import sys
+import logging
 
 
 class FakeNode(aiokatcp.DeviceServer):
     """A simple DeviceServer masquerading as a hypothetical DSP node.
 
-    There are some `print()` statements included for debugging purposes,  it's not anticipated that this
+    There are some `logging' statements included for debugging purposes,  it's not anticipated that this
     code will be used for anything more than that.
     """
 
@@ -29,8 +30,8 @@ class FakeNode(aiokatcp.DeviceServer):
         self.sensors.add(test_sensor)
 
     async def start(self, *args, **kwargs):
-        """Override base method in order to print the port we're on. For debug."""
-        print(f"Starting FakeNode server on port {self._port}")
+        """Override base method in order to log the port we're on. For debug."""
+        logging.debug(f"Starting FakeNode server on port {self._port}")
         await super(FakeNode, self).start(*args, **kwargs)
 
     async def _client_connected_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -43,13 +44,13 @@ class FakeNode(aiokatcp.DeviceServer):
         old_connections = self._connections.copy()  # Get a set of the old connections.
         await super(FakeNode, self)._client_connected_cb(reader, writer)  # Let the DeviceServer add the new one.
         new_connection = self._connections.difference(old_connections)  # The new connection will be the only one.
-        print(f"Client connected from {new_connection.pop().address}")
+        logging.debug(f"Client connected from {new_connection.pop().address}")
         # This all just goes to show that Python doesn't really have proper encapsulating and data hiding.
         # So as a result any cowboy like me can plunder base classes for things that really should be left to do their own thing.
 
     async def request_beam_weights(self, ctx, data_stream, *weights):
         """Load weights for all inputs on a specified beam data-stream."""
-        print("Received the beam-weights request.")
+        logging.debug("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
     def modify_device_status_sensor(self, new_value: str):
