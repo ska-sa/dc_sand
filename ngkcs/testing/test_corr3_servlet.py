@@ -1,12 +1,15 @@
 """Unit test for the Corr3Servlet class."""
 
 import pytest
-from ngkcs.corr3_servlet import Corr3Servlet
 import aiokatcp
+import asyncio
+import logging
 from fake_node import FakeNode
+from ngkcs.corr3_servlet import Corr3Servlet
+
 
 CORR3_SERVLET_PORT = 7404
-ARRAY_SIZE = 4  # TODO: Need to parameterise the unit tests.
+ARRAY_SIZE = 4  # TODO: Need to parameterise the unit tests. Only works for 4 at the moment.
 
 
 @pytest.fixture(scope="function")
@@ -54,12 +57,15 @@ async def make_a_request(*args):
     try:
         # We put this inside a `try/finally` block in order to make sure that everything gets cleaned up properly.
         # In some tests, we may expect an exception from deliberately sending a bad request.
-        _reply, _informs = await client.request(*args)
+        reply, informs = await client.request(*args)
+    except aiokatcp.connection.FailReply:
+        reply, informs = None, None
+        raise
     finally:
         # So we use this to ensure that we don't leave the client dangling.
         client.close()
         await client.wait_closed()
-    # TODO: In principle, we could `return` the reply, or parse it or something. I'm not quite sure what we need.
+    return reply, informs
 
 
 class TestCorr3Servlet:
@@ -91,3 +97,51 @@ class TestCorr3Servlet:
         )  # i.e. the stream is not tied-array-channelised-voltage.
         for fake_device_server in corr3_servlet_test_fixture:
             assert not fake_device_server.beam_weights_set
+
+    def test_sensor_propagation(self, corr3_servlet_test_fixture, event_loop, capfd):
+        """Test that the sensor values presented by the nodes are propagated to the servlet.
+        
+        I'm not sure that this function-within-a-function approach is the best way to go about this
+        test, but in my experience, multiple run_until_complete() calls are a recipe for frustration.
+        So I decided just to wrap it all up so that a single call would work.
+        """
+
+        async def changing_sensor_check():
+            """Check a sensor, change it, then check it again.
+
+            We are hard-coding this for the time being just to check a single sensor on a single node. This will
+            at least verify that the mechanism works. Ideally it should be parameterised, but I haven't gotten
+            around to understanding properly how to do that with pytest yet.
+            """
+            _reply, informs = await make_a_request("sensor-value")
+            logging.info("Let's check what the initial sensor-values are:")
+            for inform in informs:
+                logging.info(" ".join(arg.decode() for arg in inform.arguments))
+            # I'm going to assume that we are testing just node1 (there should be from node0 to node3 available.)
+            _reply, informs = await make_a_request("sensor-value", "node1.device-status")
+            initial_timestamp = float(informs[0].arguments[0])  # First field in the inform is a UNIX timestamp
+            assert informs[0].arguments[2] == b"node1.device-status"  # sensor-name
+            assert informs[0].arguments[3] == b"unknown"  # sensor status. This should be "unknown" to start with.
+            # The actual sensor-value if it hasn't gotten enough time to set up yet could either be empty or "default".
+            assert informs[0].arguments[4] == b"" or b"default"
+
+            # Let a little bit of time pass so that we can test the timestamp mechanism
+            await asyncio.sleep(0.1)
+
+            # I'm not quite sure of the best way to address specific fake-nodes so we will do them all.
+            for fake_device_server in corr3_servlet_test_fixture:
+                fake_device_server.modify_device_status_sensor("changed")
+
+            logging.info("After the change, this is the response to `?sensor-value`:")
+            _reply, informs = await make_a_request("sensor-value")
+            for inform in informs:
+                logging.info(" ".join(arg.decode() for arg in inform.arguments))
+
+            _reply, informs = await make_a_request("sensor-value", "node1.device-status")
+            final_timestamp = float(informs[0].arguments[0])
+            assert final_timestamp > initial_timestamp
+            assert informs[0].arguments[2] == b"node1.device-status"
+            assert informs[0].arguments[3] == b"nominal"
+            assert informs[0].arguments[4] == b"changed"
+
+        event_loop.run_until_complete(changing_sensor_check())

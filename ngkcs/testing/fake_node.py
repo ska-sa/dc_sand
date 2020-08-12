@@ -5,11 +5,11 @@ actually connecting to another katcp device server and passing messages forward.
 
 Pass the port to run the server on as an argument. Or don't, and it'll default to 1234.
 """
+import asyncio
+import aiokatcp
 import logging
 import os
 import sys
-import asyncio
-import aiokatcp
 from configparser import ConfigParser
 from typing import Type
 
@@ -28,7 +28,7 @@ from ngkcs.cbf_subarray_product import (
 LOCALHOST = "127.0.0.1"
 DEFAULT_PORT = 5678
 logger = logging.getLogger(__name__)
-logging.basicConfig()
+logging.basicConfig(level=logging.DEBUG)
 
 
 def parse_config_file(config_file=""):
@@ -59,7 +59,7 @@ def parse_config_file(config_file=""):
 class FakeNode(aiokatcp.DeviceServer):
     """A simple DeviceServer masquerading as a hypothetical DSP node.
 
-    There are some `print()` statements included for debugging purposes,  it's not anticipated that this
+    There are some `logging' statements included for debugging purposes,  it's not anticipated that this
     code will be used for anything more than that.
     """
 
@@ -98,8 +98,8 @@ class FakeNode(aiokatcp.DeviceServer):
         )
 
     async def start(self, *args, **kwargs):
-        """Override base method in order to print the port we're on. For debug."""
-        print(f"Starting FakeNode server on port {self._port}")
+        """Override base method in order to log the port we're on. For debug."""
+        logger.debug(f"Starting FakeNode server on port {self._port}")
         await super(FakeNode, self).start(*args, **kwargs)
 
     async def on_stop(self) -> None:
@@ -123,18 +123,17 @@ class FakeNode(aiokatcp.DeviceServer):
         old_connections = self._connections.copy()  # Get a set of the old connections.
         await super(FakeNode, self)._client_connected_cb(reader, writer)  # Let the DeviceServer add the new one.
         new_connection = self._connections.difference(old_connections)  # The new connection will be the only one.
-        print(f"Client connected from {new_connection.pop().address}")
+        logger.debug(f"Client connected from {new_connection.pop().address}")
         # This all just goes to show that Python doesn't really have proper encapsulating and data hiding.
         # So as a result any cowboy like me can plunder base classes for things that really should be left to do their own thing.
 
     async def request_beam_weights(self, ctx, data_stream, *weights):
         """Load weights for all inputs on a specified beam data-stream."""
-        print("Received the beam-weights request.")
+        logger.debug("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
     async def request_product_configure(self, ctx, product_name: str, config_filename: str) -> None:
-        """
-        Configure a CBF Subarray product instance.
+        """Configure a CBF Subarray product instance.
 
         Parameters
         ----------
@@ -143,11 +142,11 @@ class FakeNode(aiokatcp.DeviceServer):
         config_filename : str
             Traditional corr2 config-file filename, for now
         """
-        print(f"?product-configure called with: {ctx.req}")
+        logger.info(f"?product-configure called with: {ctx.req}")
 
         config_dict = None
 
-        if self.product is not None:
+        if self.product is not None and self.product.state != ProductState.DEAD:
             raise FailReply("Already configured or configuring")
         try:
             # self.product_id = "product1" if product_id is None else product_id.lower()
@@ -159,7 +158,7 @@ class FakeNode(aiokatcp.DeviceServer):
                 # Problem
                 errmsg = "Config-file {} is not valid".format(config_filename)
                 logger.error(errmsg)
-                FailReply(errmsg)
+                raise FailReply(errmsg)
             # else: Continue!
             config_dict = parse_config_file(abs_path)
             # Now, pass it on to the actual configure_product command!
@@ -219,7 +218,7 @@ class FakeNode(aiokatcp.DeviceServer):
             self.product = None
             raise
 
-    def _get_product(self):  # -> CBFSubarrayProductBase:
+    def _get_product(self):
         """Check that self.product exists (i.e. ?product-configure has been called).
 
         If it has not, raises a :exc:`FailReply`.
@@ -240,7 +239,7 @@ async def main():
         port = sys.argv[1]
     server = FakeNode(host=LOCALHOST, port=port)
     await server.start()
-    await server.join()  # Technically not really needed,
+    await server.join()  # Technically not really needed, as there's no cleanup afterwards as things currently stand.
 
 
 if __name__ == "__main__":

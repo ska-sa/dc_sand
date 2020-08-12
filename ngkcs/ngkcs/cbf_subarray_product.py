@@ -2,11 +2,10 @@
 
 import asyncio
 import logging
-import json
 import time
 import docker
 
-from typing import Dict, Set, List, Callable, Optional
+from typing import Dict, Set, List, Optional
 
 import aiokatcp
 from aiokatcp import FailReply, Sensor, Address
@@ -88,52 +87,6 @@ def device_status_to_sensor_status(status: DeviceStatus) -> Sensor.Status:
     return mapping[status]
 
 
-class CaptureBlockState(OrderedEnum):
-    """State of a single capture block."""
-
-    INITIALISING = 0  # Only occurs briefly on construction
-    CAPTURING = 1  # capture-init called, capture-done not yet called
-    BURNDOWN = 2  # capture-done returned, but real-time processing still happening
-    POSTPROCESSING = 3  # real-time processing complete, running batch processing
-    DEAD = 4  # fully complete
-
-
-class CaptureBlock:
-    """
-    A capture block is book-ended by a capture-init and a capture-done.
-
-    However, note that processing on it continues after the capture-done.
-    """
-
-    def __init__(self, name: str, config: dict):
-        """Init method for the CaptureBlock."""
-        self.name = name
-        self.config = config
-        self._state = CaptureBlockState.INITIALISING
-        self.postprocess_task: Optional[asyncio.Task] = None
-        self.dead_event = asyncio.Event()
-        self.state_change_callback: Optional[Callable[[], None]] = None
-        # Time each state is reached
-        self.state_time: Dict[CaptureBlockState, float] = {}
-
-    @property
-    def state(self) -> CaptureBlockState:
-        """Property of the CaptureBlock."""
-        return self._state
-
-    @state.setter
-    def state(self, value: CaptureBlockState) -> None:
-        """State-setter method for the CaptureBlock."""
-        if self._state != value:
-            self._state = value
-            if value not in self.state_time:
-                self.state_time[value] = time.time()
-            if value == CaptureBlockState.DEAD:
-                self.dead_event.set()
-            if self.state_change_callback is not None:
-                self.state_change_callback()
-
-
 def _error_on_error(state: ProductState) -> Sensor.Status:
     """Status function callback method for aiokatcp.Sensor."""
     return Sensor.Status.ERROR if state == ProductState.ERROR else Sensor.Status.NOMINAL
@@ -157,14 +110,6 @@ class CBFSubarrayProductBase:
     fail, or in some cases will cancel the prior operation. To avoid race
     conditions, changes to :attr:`state` should generally only be made from
     inside the asynchronous tasks.
-
-    There are some invariants that must hold at yield points:
-    - There is at most one capture block in state CAPTURING.
-    - :attr:`current_capture_block` is the capture block in state
-      CAPTURING, or ``None`` if there isn't one.
-    - :attr:`current_capture_block` is set if and only if the subarray state
-      is CAPTURING.
-    - Elements of :attr:`capture_blocks` are not in state DEAD.
 
     This is a base class that is intended to be subclassed. The methods whose
     names end in ``_impl`` are extension points that should be implemented in
@@ -192,9 +137,6 @@ class CBFSubarrayProductBase:
         self.config = config
         self.subarray_product_id = subarray_product_id
         self.product_controller = product_controller
-        self.capture_blocks: Dict[str, CaptureBlock] = {}  # live capture blocks, indexed by name
-        # set between capture_init and capture_done
-        self.current_capture_block: Optional[CaptureBlock] = None
         self.dead_event = asyncio.Event()  # Set when reached state DEAD
 
         # Callbacks that are called when we reach state DEAD. These are
@@ -206,13 +148,6 @@ class CBFSubarrayProductBase:
 
         # Set of sensors to remove when the product is removed
         self.sensors: Set[aiokatcp.Sensor] = set()
-        self._capture_block_sensor = Sensor(
-            str,
-            "capture-block-state",
-            "JSON dictionary of capture block states for active capture blocks",
-            default="{}",
-            initial_status=Sensor.Status.NOMINAL,
-        )
         self._state_sensor = Sensor(
             ProductState,
             "state",
@@ -222,7 +157,6 @@ class CBFSubarrayProductBase:
         self._device_status_sensor = product_controller.sensors["device-status"]
 
         self.state = ProductState.CONFIGURING  # This sets the sensor
-        self.add_sensor(self._capture_block_sensor)
         self.add_sensor(self._state_sensor)
         logger.info("Created: %r", self)
 
@@ -288,14 +222,6 @@ class CBFSubarrayProductBase:
         """
         pass
 
-    async def capture_init_impl(self, capture_block: CaptureBlock) -> None:
-        """Extension point to start a capture block.
-
-        If it raises an exception, the capture block is assumed to not have
-        been started, and the subarray product goes into state ERROR.
-        """
-        pass
-
     async def _configure(self) -> None:
         """Asynchronous task that does the configuration."""
         await self.configure_impl()
@@ -307,45 +233,6 @@ class CBFSubarrayProductBase:
         await self.deconfigure_impl(force=force, ready=ready)
 
         self.state = ProductState.DEAD
-
-    def _capture_block_dead(self, capture_block: CaptureBlock) -> None:
-        """Mark a capture block as dead and remove it from the list."""
-        try:
-            del self.capture_blocks[capture_block.name]
-        except KeyError:
-            pass  # Allows this function to be called twice
-        # Setting the state will trigger _update_capture_block_sensor, which
-        # will update the sensor with the value removed
-        capture_block.state = CaptureBlockState.DEAD
-
-    def _update_capture_block_sensor(self) -> None:
-        """Update aiokatcp.Sensor.value for all CaptureBlocks.
-        
-        Writes value as a JSON-string.
-        """
-        value = {name: capture_block.state.name.lower() for name, capture_block in self.capture_blocks.items()}
-        self._capture_block_sensor.set_value(json.dumps(value, sort_keys=True))
-
-    async def _capture_init(self, capture_block: CaptureBlock) -> None:
-        self.capture_blocks[capture_block.name] = capture_block
-        capture_block.state_change_callback = self._update_capture_block_sensor
-        # Update the sensor with the INITIALISING state
-        self._update_capture_block_sensor()
-        try:
-            await self.capture_init_impl(capture_block)
-            if self.state == ProductState.ERROR:
-                raise FailReply("Subarray product went into ERROR while starting capture")
-        except asyncio.CancelledError:
-            self._capture_block_dead(capture_block)
-            raise
-        except Exception:
-            self.state = ProductState.ERROR
-            self._capture_block_dead(capture_block)
-            raise
-        assert self.current_capture_block is None
-        self.state = ProductState.CAPTURING
-        self.current_capture_block = capture_block
-        capture_block.state = CaptureBlockState.CAPTURING
 
     def _clear_async_task(self, future: asyncio.Task) -> None:
         """Clear the current async task.
@@ -398,26 +285,6 @@ class CBFSubarrayProductBase:
 
         # ready = asyncio.Event()
         # task = asyncio.get_event_loop().create_task(self._deconfigure(force, ready))
-
-    async def capture_init(self, capture_block_id: str, config: dict) -> str:
-        """Initiate the data-capture sequence for this CBFSubarrayProduct."""
-        self._fail_if_busy()
-        if self.state != ProductState.IDLE:
-            raise FailReply(
-                "Subarray product {} is currently in state {}, not IDLE as expected. "
-                "Cannot be inited.".format(self.subarray_product_id, self.state.name)
-            )
-        logger.info("Using capture block ID %s", capture_block_id)
-
-        capture_block = CaptureBlock(capture_block_id, config)
-        task = asyncio.get_event_loop().create_task(self._capture_init(capture_block))
-        self._async_task = task
-        try:
-            await task
-        finally:
-            self._clear_async_task(task)
-        logger.info("Started capture block %s on subarray product %s", capture_block_id, self.subarray_product_id)
-        return capture_block_id
 
     def __repr__(self) -> str:
         """Format string representation when the object is queried."""
@@ -502,22 +369,6 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
             sensor for sensor in sensors.values() if sensor.name.endswith(".capture-block-state")
         ]
 
-    def _update_capture_block_state(self, capture_block_id: str, state: Optional[CaptureBlockState]) -> None:
-        """Update the simulated *.capture-block-state sensors.
-
-        The dictionary that is JSON-encoded in the sensor value is updated to
-        set the value associated with the key `capture_block_id`. If `state` is
-        `None`, the key is removed instead.
-        """
-        for name, sensor in self._interface_mode_sensors.sensors.items():
-            if name.endswith(".capture-block-state"):
-                states = json.loads(sensor.value)
-                if state is None:
-                    states.pop(capture_block_id, None)
-                else:
-                    states[capture_block_id] = state.name.lower()
-                sensor.set_value(json.dumps(states))
-
     async def configure_impl(self) -> None:
         """Update parent DeviceServer with Interface-mode Sensors."""
         logger.warning("No components will be started - running in interface mode")
@@ -527,10 +378,6 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
         # - Will need to pass through a name and config details (eventually)
         # - This example constantly logs the message 'Reticulating Spine {i}', where 'i' increments
         self.container = self.docker_client.containers.run("bfirsh/reticulate-splines", detach=True)
-
-    async def capture_init_impl(self, capture_block: CaptureBlock) -> None:
-        """Update CaptureBlock in Interface-mode."""
-        self._update_capture_block_state(capture_block.name, CaptureBlockState.CAPTURING)
 
     async def deconfigure_impl(self, force: bool, ready: asyncio.Event = None) -> None:
         """Initiate Deconfigure in Interface-mode."""
