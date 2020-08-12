@@ -12,7 +12,7 @@ from typing import (
     List,
     Tuple,
 )
-from ngkcs.cbf_subarray_product import (
+from ngkcs.data_processor import (
     DeviceStatus,
     device_status_to_sensor_status,
 )

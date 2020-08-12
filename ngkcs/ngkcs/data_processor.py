@@ -48,7 +48,7 @@ class OrderedEnum(Enum):
         return NotImplemented
 
 
-class ProductState(OrderedEnum):
+class ProcessorState(OrderedEnum):
     """State of a subarray.
 
     Only the following transitions can occur:
@@ -87,29 +87,22 @@ def device_status_to_sensor_status(status: DeviceStatus) -> Sensor.Status:
     return mapping[status]
 
 
-def _error_on_error(state: ProductState) -> Sensor.Status:
+def _error_on_error(state: ProcessorState) -> Sensor.Status:
     """Status function callback method for aiokatcp.Sensor."""
-    return Sensor.Status.ERROR if state == ProductState.ERROR else Sensor.Status.NOMINAL
+    return Sensor.Status.ERROR if state == ProcessorState.ERROR else Sensor.Status.NOMINAL
 
 
 # endregion
 
 
-class CBFSubarrayProductBase:
-    """CBF Subarray Product Base.
+class DataProcessorBase:
+    """Data Processor Base.
 
-    Represents an instance of an CBF Subarray product. This includes ingest, an
-    appropriate telescope model, and any required post-processing.
+    Represents an instance of a CBF Data Processor.
 
-    In general each telescope subarray product is handled in a completely
+    In general each telescope Data Processor is handled in a completely
     parallel fashion by the CBF. This class encapsulates these instances,
     handling control input and sensor feedback to CAM.
-
-    State changes are asynchronous operations. There can only be one
-    asynchronous operation at a time. Attempting a second one will either
-    fail, or in some cases will cancel the prior operation. To avoid race
-    conditions, changes to :attr:`state` should generally only be made from
-    inside the asynchronous tasks.
 
     This is a base class that is intended to be subclassed. The methods whose
     names end in ``_impl`` are extension points that should be implemented in
@@ -118,25 +111,25 @@ class CBFSubarrayProductBase:
     forced deconfiguration to abort them.
     """
 
-    def __init__(self, subarray_product_id: str, config: dict, product_controller: aiokatcp.DeviceServer):
+    def __init__(self, data_proc_id: str, config: dict, proc_controller: aiokatcp.DeviceServer):
         """
         Initialise the Base class with the minimum-required arguments.
         
         Parameters
         ----------
-        subarray_product_id : str
+        data_proc_id : str
             Name of the subarray product
         config : dict
             Configuration data as a (python) dictionary
-        product_controller : aiokatcp.DeviceServer
+        proc_controller : aiokatcp.DeviceServer
             The parent server that interfaces with CAM
         """
         self._async_task: Optional[asyncio.Task] = None  #: Current background task (can only be one)
         self.docker_client = docker.from_env()
 
         self.config = config
-        self.subarray_product_id = subarray_product_id
-        self.product_controller = product_controller
+        self.data_proc_id = data_proc_id
+        self.proc_controller = proc_controller
         self.dead_event = asyncio.Event()  # Set when reached state DEAD
 
         # Callbacks that are called when we reach state DEAD. These are
@@ -144,34 +137,31 @@ class CBFSubarrayProductBase:
         # necessary to react immediately rather than waiting for next time
         # around the event loop. Each callback takes self as the argument.
         self.dead_callbacks = [lambda product: product.dead_event.set()]
-        self._state: ProductState = ProductState.CONFIGURING
+        self._state: ProcessorState = ProcessorState.CONFIGURING
 
         # Set of sensors to remove when the product is removed
         self.sensors: Set[aiokatcp.Sensor] = set()
         self._state_sensor = Sensor(
-            ProductState,
-            "state",
-            "State of the subarray product state machine (prometheus: gauge)",
-            status_func=_error_on_error,
+            ProcessorState, "state", "State of the data processor state machine", status_func=_error_on_error,
         )
-        self._device_status_sensor = product_controller.sensors["device-status"]
+        self._device_status_sensor = proc_controller.sensors["device-status"]
 
-        self.state = ProductState.CONFIGURING  # This sets the sensor
+        self.state = ProcessorState.CONFIGURING  # This sets the sensor
         self.add_sensor(self._state_sensor)
         logger.info("Created: %r", self)
 
     @property
-    def state(self) -> ProductState:
-        """Property of the CBFSubarrayProduct."""
+    def state(self) -> ProcessorState:
+        """Property of the DataProcessor."""
         return self._state
 
     @state.setter
-    def state(self, value: ProductState) -> None:
-        """State-setter method for the CBFSubarrayProduct."""
-        if self._state == ProductState.ERROR and value not in (ProductState.DECONFIGURING, ProductState.DEAD):
+    def state(self, value: ProcessorState) -> None:
+        """State-setter method for the DataProcessor."""
+        if self._state == ProcessorState.ERROR and value not in (ProcessorState.DECONFIGURING, ProcessorState.DEAD):
             return  # Never leave error state other than by deconfiguring
         now = time.time()
-        if value == ProductState.ERROR and self._state != value:
+        if value == ProcessorState.ERROR and self._state != value:
             self._device_status_sensor.set_value(DeviceStatus.FAIL, timestamp=now)
         self._state = value
         self._state_sensor.set_value(value, timestamp=now)
@@ -179,7 +169,7 @@ class CBFSubarrayProductBase:
     def add_sensor(self, sensor: Sensor) -> None:
         """Add the supplied sensor to the top-level device and track it locally."""
         self.sensors.add(sensor)
-        self.product_controller.sensors.add(sensor)
+        self.proc_controller.sensors.add(sensor)
 
     def remove_sensors(self):
         """Remove all sensors added via :meth:`add_sensor`.
@@ -188,7 +178,7 @@ class CBFSubarrayProductBase:
         caller.
         """
         for sensor in self.sensors:
-            self.product_controller.sensors.discard(sensor)
+            self.proc_controller.sensors.discard(sensor)
         self.sensors.clear()
 
     @property
@@ -201,7 +191,7 @@ class CBFSubarrayProductBase:
         if self.async_busy:
             raise FailReply(
                 "Subarray product {} is busy with an operation. "
-                "Please wait for it to complete first.".format(self.subarray_product_id)
+                "Please wait for it to complete first.".format(self.data_proc_id)
             )
 
     async def configure_impl(self) -> None:
@@ -225,14 +215,14 @@ class CBFSubarrayProductBase:
     async def _configure(self) -> None:
         """Asynchronous task that does the configuration."""
         await self.configure_impl()
-        self.state = ProductState.IDLE
+        self.state = ProcessorState.IDLE
 
     async def _deconfigure(self, force: bool, ready: asyncio.Event = None) -> None:
         """Asynchronous task that does the deconfiguration."""
-        self.state = ProductState.DECONFIGURING
+        self.state = ProcessorState.DECONFIGURING
         await self.deconfigure_impl(force=force, ready=ready)
 
-        self.state = ProductState.DEAD
+        self.state = ProcessorState.DEAD
 
     def _clear_async_task(self, future: asyncio.Task) -> None:
         """Clear the current async task.
@@ -250,19 +240,19 @@ class CBFSubarrayProductBase:
     async def configure(self) -> None:
         """Configure method exposed by the Base class."""
         assert not self.async_busy, "configure should be the first thing to happen"
-        assert self.state == ProductState.CONFIGURING, "configure should be the first thing to happen"
+        assert self.state == ProcessorState.CONFIGURING, "configure should be the first thing to happen"
         task = asyncio.get_event_loop().create_task(self._configure())
         self._async_task = task
         try:
             await task
         finally:
             self._clear_async_task(task)
-        logger.info("Subarray product %s successfully configured", self.subarray_product_id)
+        logger.info("Data Processor %s successfully configured", self.data_proc_id)
 
     async def deconfigure(self, force: bool = False, ready: asyncio.Event = None):
         """Deconfigure command to satisfy the parent DeviceServer on_stop() command."""
         # Obviously need to call _deconfigure, which further calls deconfigure_impl
-        if self.state == ProductState.DEAD:
+        if self.state == ProcessorState.DEAD:
             # Deed has already been done
             return
 
@@ -272,7 +262,7 @@ class CBFSubarrayProductBase:
             await task
         finally:
             self._clear_async_task(task)
-        logger.info("Subarray product %s successfully deconfigured", self.subarray_product_id)
+        logger.info("Subarray product %s successfully deconfigured", self.data_proc_id)
 
         return True
 
@@ -281,28 +271,28 @@ class CBFSubarrayProductBase:
         #         self._fail_if_busy()
         #     else:
         #         logger.warning('Subarray product %s is busy with an operation, '
-        #                        'but deconfiguring anyway', self.subarray_product_id)
+        #                        'but deconfiguring anyway', self.data_proc_id)
 
         # ready = asyncio.Event()
         # task = asyncio.get_event_loop().create_task(self._deconfigure(force, ready))
 
     def __repr__(self) -> str:
         """Format string representation when the object is queried."""
-        return "Subarray product {} (State: {})".format(self.subarray_product_id, self.state.name)
+        return "Subarray product {} (State: {})".format(self.data_proc_id, self.state.name)
 
 
 class InterfaceModeSensors:
-    """aiokatcp.Sensors created for interfacing with a CBFSubarrayProductInterface instance."""
+    """aiokatcp.Sensors created for interfacing with a DataProcessorInterface instance."""
 
-    def __init__(self, subarray_product_id: str):
-        """Manage dummy subarray product sensors on a DeviceServer instance.
+    def __init__(self, data_proc_id: str):
+        """Manage dummy data processor sensors on a DeviceServer instance.
 
         Parameters
         ----------
-        subarray_product_id
-            Subarray product id, e.g. `array_1_c856M4k`
+        data_proc_id
+           Data Processor ID, e.g. `array_1_c856M4k`
         """
-        self.subarray_product_id = subarray_product_id
+        self.data_proc_id = data_proc_id
         self.sensors: Dict[str, Sensor] = {}
 
     def add_sensors(self, server: aiokatcp.DeviceServer) -> None:
@@ -357,13 +347,13 @@ class InterfaceModeSensors:
                 server.mass_inform("interface-changed", "sensor-list")
 
 
-class CBFSubarrayProductInterface(CBFSubarrayProductBase):
-    """Dummy implementation of CBFSubarrayProductBase interface that does not actually run anything."""
+class DataProcessorInterface(DataProcessorBase):
+    """Dummy implementation of DataProcessorBase interface that does not actually run anything."""
 
     def __init__(self, *args, **kwargs):
         """Create object in interface-mode."""
         super().__init__(*args, **kwargs)
-        self._interface_mode_sensors = InterfaceModeSensors(self.subarray_product_id)
+        self._interface_mode_sensors = InterfaceModeSensors(self.data_proc_id)
         sensors = self._interface_mode_sensors.sensors
         self._capture_block_states = [
             sensor for sensor in sensors.values() if sensor.name.endswith(".capture-block-state")
@@ -373,7 +363,7 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
         """Update parent DeviceServer with Interface-mode Sensors."""
         logger.warning("No components will be started - running in interface mode")
         # Add dummy sensors for this product
-        self._interface_mode_sensors.add_sensors(self.product_controller)
+        self._interface_mode_sensors.add_sensors(self.proc_controller)
         # Start an example docker image in detached mode
         # - Will need to pass through a name and config details (eventually)
         # - This example constantly logs the message 'Reticulating Spine {i}', where 'i' increments
@@ -381,7 +371,7 @@ class CBFSubarrayProductInterface(CBFSubarrayProductBase):
 
     async def deconfigure_impl(self, force: bool, ready: asyncio.Event = None) -> None:
         """Initiate Deconfigure in Interface-mode."""
-        self._interface_mode_sensors.remove_sensors(self.product_controller)
+        self._interface_mode_sensors.remove_sensors(self.proc_controller)
         # Stop the docker container
         # - Unfortunately the container.status doesn't really change from 'created'
         self.container.stop()

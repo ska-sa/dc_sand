@@ -17,11 +17,11 @@ from aiokatcp import (
     FailReply,
     Sensor,
 )
-from ngkcs.cbf_subarray_product import (
+from ngkcs.data_processor import (
     DeviceStatus,
-    ProductState,
-    CBFSubarrayProductBase,
-    CBFSubarrayProductInterface,
+    ProcessorState,
+    DataProcessorBase,
+    DataProcessorInterface,
     device_status_to_sensor_status,
 )
 
@@ -70,18 +70,15 @@ class FakeNode(aiokatcp.DeviceServer):
         self,
         host: str = LOCALHOST,
         port: int = DEFAULT_PORT,
-        # product_id: str = None,
         cbf_servlet: aiokatcp.Client = None,  # Defaulting to None, for now
         shutdown_delay: float = 7.0,  # Delay before completing ?halt
         *args,
         **kwargs,
     ):
         """Initialise the FakeNode DeviceServer with the necessary properties."""
-        self.product = None
+        self.data_processor = None
         self.cbf_servlet = cbf_servlet
         self.shutdown_delay = shutdown_delay
-        # self.logger = logging.getLogger(name=self.product_id)
-        # logging.basicConfig()  # For now
 
         super(FakeNode, self).__init__(host, port=port, *args, **kwargs)
 
@@ -91,7 +88,7 @@ class FakeNode(aiokatcp.DeviceServer):
             Sensor(
                 DeviceStatus,
                 "device-status",
-                "Devices status of the subarray product controller",
+                "Devices status of the data processor",
                 default=DeviceStatus.OK,
                 status_func=device_status_to_sensor_status,
             )
@@ -106,12 +103,12 @@ class FakeNode(aiokatcp.DeviceServer):
         """Add extra clean-up before finally halting the server."""
         # await self._consul_deregister()
         # self._prometheus_watcher.close()
-        if self.product is not None and self.product.state != ProductState.DEAD:
-            logger.warning("Product controller interrupted - deconfiguring running product")
+        if self.data_processor is not None and self.data_processor.state != ProcessorState.DEAD:
+            logger.warning("Data Processor interrupted - deconfiguring running Data Processor.")
             try:
-                await self.product.deconfigure(force=True)
+                await self.data_processor.deconfigure(force=True)
             except Exception:
-                logger.warning("Failed to deconfigure product %s during shutdown", exc_info=True)
+                logger.warning("Failed to deconfigure %s during shutdown", exc_info=True)
 
     async def _client_connected_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Provide debug info concerning new connections that the base doesn't give.
@@ -132,25 +129,24 @@ class FakeNode(aiokatcp.DeviceServer):
         logger.debug("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
 
-    async def request_product_configure(self, ctx, product_name: str, config_filename: str) -> None:
-        """Configure a CBF Subarray product instance.
+    async def request_configure(self, ctx, data_proc_name: str, config_filename: str) -> None:
+        """Configure a data processor instance.
 
         Parameters
         ----------
-        name : str
-            Name of the subarray product.
+        data_proc_name : str
+            Name of the data processor.
         config_filename : str
             Traditional corr2 config-file filename, for now
         """
-        logger.info(f"?product-configure called with: {ctx.req}")
+        logger.info(f"?configure called with: {ctx.req}")
 
         config_dict = None
 
-        if self.product is not None and self.product.state != ProductState.DEAD:
+        if self.data_processor is not None and self.data_processor.state != ProcessorState.DEAD:
             raise FailReply("Already configured or configuring")
         try:
-            # self.product_id = "product1" if product_id is None else product_id.lower()
-            logger.debug(f"Trying to create and configure product {product_name.lower()}")
+            logger.debug(f"Trying to create and configure product {data_proc_name.lower()}")
 
             # Check if the config-file exists
             abs_path = os.path.abspath(config_filename)
@@ -162,38 +158,15 @@ class FakeNode(aiokatcp.DeviceServer):
             # else: Continue!
             config_dict = parse_config_file(abs_path)
             # Now, pass it on to the actual configure_product command!
-            await self.configure_product(name=product_name.lower(), config_dict=config_dict)
+            await self._configure_data_processor(name=data_proc_name.lower(), config_dict=config_dict)
 
         except Exception as exc:
             retmsg = f"Failed to process config: {exc}"
             logger.error(retmsg)
             raise FailReply(retmsg) from exc
 
-    async def configure_product(self, name: str, config_dict: dict) -> None:
-        """
-        Configure a subarray product in response to a request.
-
-        Raises
-        ------
-        FailReply
-            if a configure/deconfigure is in progress
-        FailReply
-            If any of the following occur
-            - The specified subarray product id already exists, but the config
-              differs from that specified
-            - If docker python libraries are not installed and we are not using interface mode
-            - There are insufficient resources to launch
-            - A docker image could not be found
-            - If one or more nodes fail to launch (e.g. container not found)
-            - If one or more nodes fail to become alive
-            - If we fail to establish katcp connection to all nodes requiring them.
-
-        Returns
-        -------
-        str
-            Final name of the subarray-product.
-
-        """
+    async def _configure_data_processor(self, name: str, config_dict: dict) -> None:
+        """Configure a data processor in response to a request."""
 
         def dead_callback(product):
             if self.shutdown_delay > 0:
@@ -206,30 +179,30 @@ class FakeNode(aiokatcp.DeviceServer):
 
         asyncio.sleep(0.5)
 
-        # Create CBFSubarrayProduct in 'interface mode'
-        product_cls: Type[CBFSubarrayProductBase] = CBFSubarrayProductInterface
-        product = product_cls(subarray_product_id=name, config=config_dict, product_controller=self)
-        self.product = product
-        self.product.dead_callbacks.append(dead_callback)
+        # Create DataProcessor in 'interface mode'
+        data_processor_cls: Type[DataProcessorBase] = DataProcessorInterface
+        data_processor = data_processor_cls(data_proc_id=name, config=config_dict, proc_controller=self)
+        self.data_processor = data_processor
+        self.data_processor.dead_callbacks.append(dead_callback)
 
         try:
-            await self.product.configure()
+            await self.data_processor.configure()
         except Exception:
-            self.product = None
+            self.data_processor = None
             raise
 
-    def _get_product(self):
-        """Check that self.product exists (i.e. ?product-configure has been called).
+    def _get_data_processor(self):
+        """Check that self.data_processor exists (i.e. ?product-configure has been called).
 
         If it has not, raises a :exc:`FailReply`.
         """
-        if self.product is None:
-            raise FailReply("?product-configure has not been called yet. " "It must be called before other requests.")
-        return self.product
+        if self.data_processor is None:
+            raise FailReply("?product-configure has not been called yet. It must be called before other requests.")
+        return self.data_processor
 
-    async def request_product_deconfigure(self, ctx, force: bool = False) -> None:
-        """Deconfigure the product and shut down the server."""
-        await self._get_product().deconfigure(force=force)
+    async def request_deconfigure(self, ctx, force: bool = False) -> None:
+        """Deconfigure the data_processor and shut down the server."""
+        await self._get_data_processor().deconfigure(force=force)
 
 
 async def main():

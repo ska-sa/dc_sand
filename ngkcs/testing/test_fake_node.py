@@ -3,7 +3,7 @@
 import pytest
 import aiokatcp
 from fake_node import FakeNode
-from ngkcs.cbf_subarray_product import ProductState
+from ngkcs.data_processor import ProcessorState
 
 
 LOCALHOST = "127.0.0.1"
@@ -48,29 +48,29 @@ async def make_a_request(*args):
 class TestFakeNode:
     """Class for grouping FakeNode tests."""
 
-    def test_product_configure(self, fake_node_test_fixture, event_loop):
-        """Test a properly-formed ?product-configure request."""
-        event_loop.run_until_complete(make_a_request("product-configure", "amish", "testing/test_4k_corr.ini"))
+    def test_configure(self, fake_node_test_fixture, event_loop):
+        """Test a properly-formed ?configure request."""
+        event_loop.run_until_complete(make_a_request("configure", "test", "testing/test_4k_corr.ini"))
         for fake_device_server in fake_node_test_fixture:
-            assert fake_device_server.product is not None
+            assert fake_device_server.data_processor is not None
 
-    def test_product_configure_invalid_config_file(self, fake_node_test_fixture, event_loop):
-        """Test a ?product-configure request with an invalid config file."""
+    def test_configure_invalid_config_file(self, fake_node_test_fixture, event_loop):
+        """Test a ?configure request with an invalid config file."""
         # This context manager tells `pytest` that we expect an exception to be raised.
         with pytest.raises(aiokatcp.connection.FailReply):
-            event_loop.run_until_complete(make_a_request("product-configure", "amish", "amish.ini"))
+            event_loop.run_until_complete(make_a_request("configure", "test", "amish.ini"))
 
-    def test_product_deconfigure(self, fake_node_test_fixture, event_loop):
-        """Test a ?product-deconfigure command."""
-        event_loop.run_until_complete(make_a_request("product-configure", "amish", "testing/test_4k_corr.ini"))
+    def test_deconfigure(self, fake_node_test_fixture, event_loop):
+        """Test a ?deconfigure command."""
+        event_loop.run_until_complete(make_a_request("configure", "test", "testing/test_4k_corr.ini"))
 
-        event_loop.run_until_complete(make_a_request("product-deconfigure"))
+        event_loop.run_until_complete(make_a_request("deconfigure"))
         for fake_device_server in fake_node_test_fixture:
-            assert fake_device_server.product.state == ProductState.DEAD
+            assert fake_device_server.data_processor.state == ProcessorState.DEAD
 
     def test_server_halt(self, fake_node_test_fixture, event_loop):
-        """Test a ?halt command with an already-running SubarrayProduct."""
-        # First, (re)configure a product
-        event_loop.run_until_complete(make_a_request("product-configure", "amish", "testing/test_4k_corr.ini"))
+        """Test a ?halt command with an already-running DataProcessor."""
+        # First, (re)configure a DataProcessor
+        event_loop.run_until_complete(make_a_request("configure", "test", "testing/test_4k_corr.ini"))
 
         event_loop.run_until_complete(make_a_request("halt"))
