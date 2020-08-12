@@ -1,0 +1,4 @@
+aiokatcp==0.8.0
+docker
+ipaddress
+pytest-asyncio

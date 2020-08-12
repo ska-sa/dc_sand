@@ -12,5 +12,7 @@ setup(
     install_requres=[
         "aiokatcp==0.8.0",
         "ipaddress",
-        ],  # Note, that this version will give deprecation warnings in Python 3.8.
+        "pytest-asyncio",
+        "docker",
+    ],  # Note, that this version will give deprecation warnings in Python 3.8.
 )
