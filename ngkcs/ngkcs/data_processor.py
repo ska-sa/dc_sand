@@ -103,21 +103,19 @@ class DataProcessorBase:
 
     Represents an instance of a CBF Data Processor.
 
-    In general each telescope Data Processor is handled in a completely
-    parallel fashion by the CBF. This class encapsulates these instances,
-    handling control input and sensor feedback to CAM.
+    In general each Data Processor is handled in a completely parallel fashion by the CBF.
+    This class encapsulates these instances, handling control input and sensor feedback to CAM.
 
     This is a base class that is intended to be subclassed. The methods whose
     names end in ``_impl`` are extension points that should be implemented in
     subclasses to do the real work. These methods are run as part of the
-    asynchronous operations. They need to be cancellation-safe, to allow for
-    forced deconfiguration to abort them.
+    asynchronous operations.
     """
 
     def __init__(self, data_proc_id: str, config: dict, proc_controller: aiokatcp.DeviceServer):
         """
         Initialise the Base class with the minimum-required arguments.
-        
+
         Parameters
         ----------
         data_proc_id : str
@@ -193,20 +191,16 @@ class DataProcessorBase:
             )
 
     async def configure_impl(self) -> None:
-        """Extension point to configure the subarray."""
+        """Extension point to configure the DataProcessor."""
         pass
 
-    async def deconfigure_impl(self, force: bool, ready: asyncio.Event = None) -> None:
-        """Extension point to deconfigure the subarray.
+    async def deconfigure_impl(self, force: bool) -> None:
+        """Extension point to deconfigure the DataProcessor.
 
         Parameters
         ----------
         force
-            Whether to do an abrupt deconfiguration without waiting for
-            postprocessing.
-        ready
-            If the ?product-deconfigure command should return before
-            deconfiguration is complete, this event can be set at that point.
+            Force deconfiguration, regardless of state.
         """
         pass
 
@@ -215,10 +209,10 @@ class DataProcessorBase:
         await self.configure_impl()
         self.state = ProcessorState.IDLE
 
-    async def _deconfigure(self, force: bool, ready: asyncio.Event = None) -> None:
+    async def _deconfigure(self, force: bool) -> None:
         """Asynchronous task that does the deconfiguration."""
         self.state = ProcessorState.DECONFIGURING
-        await self.deconfigure_impl(force=force, ready=ready)
+        await self.deconfigure_impl(force=force)
 
         self.state = ProcessorState.DEAD
 
@@ -247,14 +241,14 @@ class DataProcessorBase:
             self._clear_async_task(task)
         logger.info("Data Processor %s successfully configured", self.data_proc_id)
 
-    async def deconfigure(self, force: bool = False, ready: asyncio.Event = None):
-        """Deconfigure command to satisfy the parent DeviceServer on_stop() command."""
+    async def deconfigure(self, force: bool = False):
+        """Deconfigure method exposed to tear down the DataProcessor."""
         # Obviously need to call _deconfigure, which further calls deconfigure_impl
         if self.state == ProcessorState.DEAD:
             # Deed has already been done
             return
 
-        task = asyncio.get_event_loop().create_task(self._deconfigure(force, ready))
+        task = asyncio.get_event_loop().create_task(self._deconfigure(force))
         self._async_task = task
         try:
             await task
@@ -263,16 +257,6 @@ class DataProcessorBase:
         logger.info("Subarray product %s successfully deconfigured", self.data_proc_id)
 
         return True
-
-        # if self.async_busy:
-        #     if not force:
-        #         self._fail_if_busy()
-        #     else:
-        #         logger.warning('Subarray product %s is busy with an operation, '
-        #                        'but deconfiguring anyway', self.data_proc_id)
-
-        # ready = asyncio.Event()
-        # task = asyncio.get_event_loop().create_task(self._deconfigure(force, ready))
 
     def __repr__(self) -> str:
         """Format string representation when the object is queried."""
@@ -366,7 +350,7 @@ class DataProcessorInterface(DataProcessorBase):
         # - This example constantly logs the message 'Reticulating Spine {i}', where 'i' increments
         self.container = self.docker_client.containers.run("bfirsh/reticulate-splines", detach=True)
 
-    async def deconfigure_impl(self, force: bool, ready: asyncio.Event = None) -> None:
+    async def deconfigure_impl(self, force: bool) -> None:
         """Initiate Deconfigure in Interface-mode."""
         self._interface_mode_sensors.remove_sensors(self.proc_controller)
         # Stop the docker container
@@ -376,18 +360,23 @@ class DataProcessorInterface(DataProcessorBase):
 
 def parse_config_file(config_filename=""):
     """
-    Parse an config file into a dictionary. No checking done at all.
-    
+    Parse a config file into a dictionary. No checking done at all.
+
     Placing it here for now - will eventually be moved into a utils.py.
 
-    :param config_filename: the config file to process
-    :param required_sections: sections that MUST be included
-    :return: a dictionary containing the configuration
+    Parameters
+    ----------
+    config_filename
+        The config file to process
+
+    Returned
+    --------
+        A dictionary containing the configuration data
     """
     parser = ConfigParser()
     files = parser.read(config_filename)
     if len(files) == 0:
-        raise IOError("Could not read the config file, %s" % config_filename)
+        raise IOError(f"Could not read the config file: {config_filename}")
 
     config_dict = {}
 

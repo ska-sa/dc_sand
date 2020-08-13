@@ -1,4 +1,4 @@
-"""Unit test for the FakeNode class."""
+"""Unit test for the ProcessController, derived from test_corr3_servlet.py."""
 
 import pytest
 import aiokatcp
@@ -7,7 +7,6 @@ from ngkcs.data_processor import (
     DeviceServer,
     ProcessorState,
 )
-
 
 LOCALHOST = "127.0.0.1"
 DEFAULT_PORT = 5678
@@ -44,14 +43,11 @@ async def make_a_request(*args):
     """Connect to the servlet and send a request."""
     client = await aiokatcp.Client.connect(host=LOCALHOST, port=DEFAULT_PORT)
     try:
-        # We put this inside a `try/finally` block in order to make sure that everything gets cleaned up properly.
-        # In some tests, we may expect an exception from deliberately sending a bad request.
         reply, informs = await client.request(*args)
     except aiokatcp.connection.FailReply:
         reply, informs = None, None
         raise
     finally:
-        # So we use this to ensure that we don't leave the client dangling.
         client.close()
         await client.wait_closed()
     return reply, informs
@@ -68,9 +64,8 @@ class TestProcessController:
 
     def test_configure_invalid_config_file(self, process_controller_test_fixture, event_loop):
         """Test a ?configure-processors request with an invalid config file."""
-        # This context manager tells `pytest` that we expect an exception to be raised.
         with pytest.raises(aiokatcp.connection.FailReply):
-            event_loop.run_until_complete(make_a_request("configure-processors", "test", "amish.ini"))
+            event_loop.run_until_complete(make_a_request("configure-processors", "test", "fail.ini"))
 
     def test_deconfigure(self, process_controller_test_fixture, event_loop):
         """Test a ?deconfigure-processors command."""
