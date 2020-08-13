@@ -9,6 +9,7 @@ import asyncio
 import aiokatcp
 import logging
 import sys
+import logging
 
 from aiokatcp import Sensor
 from ngkcs.data_processor import (
@@ -33,26 +34,18 @@ class FakeNode(aiokatcp.DeviceServer):
     BUILD_STATE = "build-state"
 
     def __init__(
-        self, host: str = LOCALHOST, port: int = DEFAULT_PORT, **kwargs,
+        self, *args, **kwargs,
     ):
         """Initialise the FakeNode DeviceServer with the necessary properties."""
-        super(FakeNode, self).__init__(host, port=port, **kwargs)
-
         self.beam_weights_set = False
-
-        self.sensors.add(
-            Sensor(
-                DeviceStatus,
-                "device-status",
-                "Devices status of the data processor",
-                default=DeviceStatus.OK,
-                status_func=device_status_to_sensor_status,
-            )
-        )
+        super(FakeNode, self).__init__(*args, **kwargs)
+        # Add a fake "device-status" sensor to tweak.
+        test_sensor = aiokatcp.Sensor(str, "device-status", "B-engine LRU ok", units="boolean", default="default")
+        self.sensors.add(test_sensor)
 
     async def start(self, *args, **kwargs):
         """Override base method in order to log the port we're on. For debug."""
-        logger.debug(f"Starting FakeNode server on port {self._port}")
+        logging.debug(f"Starting FakeNode server on port {self._port}")
         await super(FakeNode, self).start(*args, **kwargs)
 
     async def _client_connected_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -65,18 +58,29 @@ class FakeNode(aiokatcp.DeviceServer):
         old_connections = self._connections.copy()  # Get a set of the old connections.
         await super(FakeNode, self)._client_connected_cb(reader, writer)  # Let the DeviceServer add the new one.
         new_connection = self._connections.difference(old_connections)  # The new connection will be the only one.
-        logger.debug(f"Client connected from {new_connection.pop().address}")
+        logging.debug(f"Client connected from {new_connection.pop().address}")
         # This all just goes to show that Python doesn't really have proper encapsulating and data hiding.
         # So as a result any cowboy like me can plunder base classes for things that really should be left to do their own thing.
 
     async def request_beam_weights(self, ctx, data_stream, *weights):
         """Load weights for all inputs on a specified beam data-stream."""
-        logger.debug("Received the beam-weights request.")
+        logging.debug("Received the beam-weights request.")
         self.beam_weights_set = True  # Obiously in a production version, we'd check that the request was correct.
+
+    def modify_device_status_sensor(self, new_value: str):
+        """Modify the fake sensor.
+        
+        This is for a test fixture to be able to make changes and see whether they propagate.
+        """
+        self.sensors["device-status"].value = new_value
 
 
 async def main():
-    """Execute the program. Go on, hop to."""
+    """Execute the program. Go on, hop to.
+
+    We include this functionality as a conveniecnce to the consumer who may benefit in some way from the ability
+    to run this fake node as a standalone thing, rather than as a component of a unit test.
+    """
     port = DEFAULT_PORT
     if len(sys.argv) >= 2:  # Crude primitive arg parsing.
         port = sys.argv[1]

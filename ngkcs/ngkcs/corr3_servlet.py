@@ -8,14 +8,7 @@ a bunch of other DeviceServers, which represent hypothetical processing nodes.
 
 import aiokatcp
 import logging
-from typing import (
-    List,
-    Tuple,
-)
-from ngkcs.data_processor import (
-    DeviceStatus,
-    device_status_to_sensor_status,
-)
+from typing import List, Tuple
 
 
 class SensorMirror(aiokatcp.SensorWatcher):
@@ -64,7 +57,7 @@ class SensorMirror(aiokatcp.SensorWatcher):
         logging.info(f"Removed sensor {name} on {self.node_name}")
 
     def batch_stop(self) -> None:
-        """Call at the end of a batch of back-to-back updates."""
+        """Called at the end of a batch of back-to-back updates."""
         if self._interface_stale:
             self.server.mass_inform("interface-changed", "sensor-list")
             self._interface_stale = False
@@ -115,16 +108,6 @@ class Corr3Servlet(aiokatcp.DeviceServer):
         self.sensor_mirrors: List[SensorMirror] = []
         super(Corr3Servlet, self).__init__(host=host, port=port, **kwargs)
         logging.info(f'Corr3Servlet "{self.name}" created.')
-
-        self.sensors.add(
-            aiokatcp.Sensor(
-                DeviceStatus,
-                "device-status",
-                "Devices status of the Corr3Servlet",
-                default=DeviceStatus.OK,
-                status_func=device_status_to_sensor_status,
-            )
-        )
 
     async def start(self):
         """Do the usual startup stuff plus initiating connections to DSP nodes.
