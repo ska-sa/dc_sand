@@ -58,7 +58,7 @@ class ProcessController(aiokatcp.DeviceServer):
         """
         self.name = name.lower()
         self.num_endpoints = len(processor_endpoints)
-        self.endpoints = processor_endpoints
+        self.proc_endpoints = processor_endpoints
         self.processor_clients: List[aiokatcp.Client] = []
 
         super(ProcessController, self).__init__(host=host, port=port, **kwargs)
@@ -81,7 +81,7 @@ class ProcessController(aiokatcp.DeviceServer):
         await super(ProcessController, self).start()
         logger.info(f"Started ProcessController {self.name}.")
 
-        for n, (host, port) in enumerate(self.endpoints):
+        for n, (host, port) in enumerate(self.proc_endpoints):
             this_client = aiokatcp.Client(host=host, port=port)
             self.processor_clients.append(this_client)
 
@@ -89,7 +89,7 @@ class ProcessController(aiokatcp.DeviceServer):
         """Additional functionality upon receiving a ?halt request."""
         for this_client in self.processor_clients:
             # Ensure all the clients are halted
-            _reply, _informs = this_client.request("halt")
+            _reply, _informs = await this_client.request("halt")
             this_client.close()
             await this_client.wait_closed()
 
@@ -117,12 +117,10 @@ class ProcessController(aiokatcp.DeviceServer):
             # else: Continue!
 
             for client_counter, this_client in enumerate(self.processor_clients):
-                this_processor_name = "{self.name}-{client_counter}"  # For now
+                this_processor_name = f"{self.name}-node{client_counter}"  # For now
                 logger.debug(f"Configuring DataProcessor: {this_processor_name}")
                 # This is the blocking method
-                _reply, _informs = await this_client.request(
-                    "configure", name=this_processor_name, config_filename=abs_path
-                )
+                _reply, _informs = await this_client.request("configure", this_processor_name, abs_path)
                 # Might be able to do something like:
                 # - configure_tasks = [client.request("", ...) for client in self.processor_clients]
                 # - asyncio.wait(configure_tasks)
@@ -136,4 +134,4 @@ class ProcessController(aiokatcp.DeviceServer):
         """Deconfigure command to tear down Data Processors and their respective docker containers."""
         for this_client in self.processor_clients:
             logger.debug(f"Deconfiguring DataProcessor @ {this_client.host}:{this_client.port}")
-            _reply, _informs = await this_client.request("deconfigure", force=force)
+            _reply, _informs = await this_client.request("deconfigure", force)

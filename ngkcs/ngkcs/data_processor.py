@@ -359,7 +359,6 @@ class DataProcessorInterface(DataProcessorBase):
 
     async def configure_impl(self) -> None:
         """Update parent DeviceServer with Interface-mode Sensors."""
-        logger.warning("No components will be started - running in interface mode")
         # Add dummy sensors for this product
         self._interface_mode_sensors.add_sensors(self.proc_controller)
         # Start an example docker image in detached mode
@@ -418,7 +417,7 @@ class DeviceServer(aiokatcp.DeviceServer):
             Sensor(
                 DeviceStatus,
                 "device-status",
-                "Devices status of the data processor",
+                "Devices status of the DataProcessor",
                 default=DeviceStatus.OK,
                 status_func=device_status_to_sensor_status,
             )
@@ -499,6 +498,7 @@ class DeviceServer(aiokatcp.DeviceServer):
 
 
 async def main():
+    """Asynchronous function that exposes ability to run the data_processor.DeviceServer manually."""
     port = DEFAULT_PORT
     if len(sys.argv) >= 2:  # Crude primitive arg parsing.
         port = sys.argv[1]

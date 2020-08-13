@@ -33,20 +33,10 @@ class FakeNode(aiokatcp.DeviceServer):
     BUILD_STATE = "build-state"
 
     def __init__(
-        self,
-        host: str = LOCALHOST,
-        port: int = DEFAULT_PORT,
-        cbf_servlet: aiokatcp.Client = None,  # Defaulting to None, for now
-        shutdown_delay: float = 7.0,  # Delay before completing ?halt
-        *args,
-        **kwargs,
+        self, host: str = LOCALHOST, port: int = DEFAULT_PORT, **kwargs,
     ):
         """Initialise the FakeNode DeviceServer with the necessary properties."""
-        self.data_processor = None
-        self.cbf_servlet = cbf_servlet
-        self.shutdown_delay = shutdown_delay
-
-        super(FakeNode, self).__init__(host, port=port, *args, **kwargs)
+        super(FakeNode, self).__init__(host, port=port, **kwargs)
 
         self.beam_weights_set = False
 
