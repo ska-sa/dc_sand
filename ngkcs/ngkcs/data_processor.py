@@ -1,11 +1,13 @@
 """Control of a single subarray product."""
 
 import asyncio
+from configparser import ConfigParser
 import logging
 import time
 import docker
+import sys
 
-from typing import Dict, Set, List, Optional
+from typing import Dict, List, Optional, Set
 
 import aiokatcp
 from aiokatcp import FailReply, Sensor, Address
@@ -14,6 +16,7 @@ from enum import Enum
 from ipaddress import IPv4Address
 
 LOCALHOST = "127.0.0.1"  # Unlike 'localhost', guaranteed to be IPv4
+DEFAULT_PORT = 5680
 logger = logging.getLogger(__name__)
 
 
@@ -132,11 +135,6 @@ class DataProcessorBase:
         self.proc_controller = proc_controller
         self.dead_event = asyncio.Event()  # Set when reached state DEAD
 
-        # Callbacks that are called when we reach state DEAD. These are
-        # provided in addition to dead_event, because sometimes it's
-        # necessary to react immediately rather than waiting for next time
-        # around the event loop. Each callback takes self as the argument.
-        self.dead_callbacks = [lambda product: product.dead_event.set()]
         self._state: ProcessorState = ProcessorState.CONFIGURING
 
         # Set of sensors to remove when the product is removed
@@ -375,3 +373,141 @@ class DataProcessorInterface(DataProcessorBase):
         # Stop the docker container
         # - Unfortunately the container.status doesn't really change from 'created'
         self.container.stop()
+
+
+def parse_config_file(config_filename=""):
+    """
+    Parse an config file into a dictionary. No checking done at all.
+    
+    Placing it here for now - will eventually be moved into a utils.py.
+
+    :param config_filename: the config file to process
+    :param required_sections: sections that MUST be included
+    :return: a dictionary containing the configuration
+    """
+    parser = ConfigParser()
+    files = parser.read(config_filename)
+    if len(files) == 0:
+        raise IOError("Could not read the config file, %s" % config_filename)
+
+    config_dict = {}
+
+    for section in parser.sections():
+        config_dict[section] = {}
+        for items in parser.items(section):
+            config_dict[section][items[0]] = items[1]
+
+    return config_dict
+
+
+class DeviceServer(aiokatcp.DeviceServer):
+    """A simple aiokatcp.DeviceServer exposing control of a data processing node."""
+
+    VERSION = "process-controller-0.1"
+    BUILD_STATE = "build-state"
+
+    def __init__(
+        self, *, host: str = LOCALHOST, port: int = DEFAULT_PORT, **kwargs,
+    ):
+        """Initialise the DataProcessor DeviceServer with the necessary properties."""
+        self.data_processor = None
+
+        super(DeviceServer, self).__init__(host, port=port, **kwargs)
+
+        self.sensors.add(
+            Sensor(
+                DeviceStatus,
+                "device-status",
+                "Devices status of the data processor",
+                default=DeviceStatus.OK,
+                status_func=device_status_to_sensor_status,
+            )
+        )
+
+    async def on_stop(self) -> None:
+        """Add extra clean-up before finally halting the server."""
+        if self.data_processor is not None and self.data_processor.state != ProcessorState.DEAD:
+            logger.warning("Data Processor interrupted - deconfiguring running Data Processor.")
+            try:
+                await self.data_processor.deconfigure(force=True)
+            except Exception:
+                logger.warning("Failed to deconfigure %s during shutdown", exc_info=True)
+
+    async def _client_connected_cb(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        """Provide debug info concerning new connections that the base doesn't give.
+
+        Taken from testing/fake_node.py.
+        """
+        old_connections = self._connections.copy()  # Get a set of the old connections.
+        await super(DeviceServer, self)._client_connected_cb(reader, writer)  # Let the DeviceServer add the new one.
+        new_connection = self._connections.difference(old_connections)  # The new connection will be the only one.
+        logger.debug(f"Client connected from {new_connection.pop().address}")
+
+    async def request_configure(self, ctx, data_proc_name: str, config_filename: str) -> None:
+        """Configure a data processor instance.
+
+        Parameters
+        ----------
+        data_proc_name : str
+            Name of the data processor.
+        config_filename : str
+            Traditional corr2 config-file filename, for now
+            Should be error-checked before being passed here
+        """
+        logger.info(f"?configure called with: {ctx.req}")
+
+        config_dict = None
+
+        if self.data_processor is not None and self.data_processor.state != ProcessorState.DEAD:
+            raise FailReply("Already configured or configuring")
+        try:
+
+            config_dict = parse_config_file(config_filename)
+            # Now, pass it on to the actual configure_product command!
+            await self._configure_data_processor(name=data_proc_name.lower(), config_dict=config_dict)
+
+        except Exception as exc:
+            retmsg = f"Failed to process config: {exc}"
+            logger.error(retmsg)
+            raise FailReply(retmsg)
+
+    async def _configure_data_processor(self, name: str, config_dict: dict) -> None:
+        """Configure a data processor in response to a request."""
+        logger.debug(f"Received config data: {config_dict}")
+
+        data_processor = DataProcessorInterface(data_proc_id=name, config=config_dict, proc_controller=self)
+        self.data_processor = data_processor
+
+        try:
+            await self.data_processor.configure()
+        except Exception:
+            self.data_processor = None
+            raise
+
+    def _get_data_processor(self):
+        """Check that self.data_processor exists (i.e. ?product-configure has been called).
+
+        If it has not, raises a :exc:`FailReply`.
+        """
+        if self.data_processor is None:
+            raise FailReply("?product-configure has not been called yet. It must be called before other requests.")
+        return self.data_processor
+
+    async def request_deconfigure(self, ctx, force: bool = False) -> None:
+        """Deconfigure the data_processor and shut down the server."""
+        await self._get_data_processor().deconfigure(force=force)
+
+
+async def main():
+    port = DEFAULT_PORT
+    if len(sys.argv) >= 2:  # Crude primitive arg parsing.
+        port = sys.argv[1]
+    server = DeviceServer(host=LOCALHOST, port=port)
+    await server.start()
+    await server.join()  # Technically not really needed, as there's no cleanup afterwards as things currently stand.
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
