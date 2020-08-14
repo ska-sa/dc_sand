@@ -18,11 +18,12 @@
 #define NUM_WE 4096
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
 //Store MAC_ADDRESS as array of bytes as this is the easiest to convert to a network byte order
-#define DESTINATION_MAC_ADDRESS "1c:34:da:4b:93:92"
+//#define DESTINATION_MAC_ADDRESS "1c:34:da:4b:93:92"
+#define DESTINATION_MAC_ADDRESS {0x1c,0x34,0xda,0x4b,0x93,0x92}
 #define SOURCE_IP_ADDRESS "10.100.18.9"
-//Store MAC_ADDRESS as array of bytes as this is the easiest to convert to a network byte order
-//#define SOURCE_MAC_ADDRESS {0x1c,0x34,0xda,0x54,0x99,0xbc}
-#define SOURCE_MAC_ADDRESS "1c:34:da:54:99:bc"
+//Store MAC_ADDRESS - this should already be in network byte order
+#define SOURCE_MAC_ADDRESS {0x1c,0x34,0xda,0x54,0x99,0xbc}
+//#define SOURCE_MAC_ADDRESS "1c:34:da:54:99:bc"
 
 
 /* template of packet to send - in this case icmp */
@@ -50,7 +51,7 @@ struct __attribute__((__packed__)) network_packet {
     uint8_t ip_packet_version_and_ihl;
     uint8_t ip_packet_dscp_and_ecn;
     uint16_t ip_packet_total_length;
-    uint16_t ip_packet_identiication;
+    uint16_t ip_packet_identification;
     uint16_t ip_packet_flags_and_fragment_offset;
     uint8_t ip_packet_ttl;
     uint8_t ip_packet_protocol;
@@ -244,7 +245,7 @@ int main()
 
 
     /* 10. Send Operation */
-    while(0) 
+    while(1) 
     {
         /*
          * inline means data will be copied to space pre-allocated in descriptor
@@ -311,44 +312,78 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     //printf("GID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
 
     //IP Layer
+
+    //This value is hardcoded - have not bothered to look into it
+    p_network_packet->ip_packet_version_and_ihl = 0x45;
+    
+    //These values allow for differentiating type of service and congestion level - I think this is not used in the MeerKAT network, so it is just left at 0
+    p_network_packet->ip_packet_dscp_and_ecn = 0x0;
+
+    //This is the packet length - it includes the IP header and data while excluding the ethernet frame fields.
+    uint16_t u16IPPacketLengthBytes = sizeof(*p_network_packet) 
+            - sizeof(p_network_packet->ethernet_frame_dest_mac) 
+            - sizeof(p_network_packet->ethernet_frame_src_mac)
+            - sizeof(p_network_packet->ethernet_frame_ether_type);
+    p_network_packet->ip_packet_total_length = htons(u16IPPacketLengthBytes);
+
+    //If an IP packet is fragmented during transmission, this field contains a unique number identifying the original packet when packets are reassembled.
+    p_network_packet->ip_packet_identification = 0;
+
+    //This specifies if a packet can be fragmented and what the offset of the current fragment is. We set a flag to disable fragmentation
+    p_network_packet->ip_packet_flags_and_fragment_offset = htons(0x4000);
+
+    //TTL is well explained - google it. Set to eight for now, but that was more a guess. May need to be reworked in the future
+    p_network_packet->ip_packet_ttl = 8;
+
+    //17 represents the UDP protocol
+    p_network_packet->ip_packet_protocol = 17;
+
+    //Set IP addresses
     p_network_packet->ip_packet_dest_address = inet_addr(DESTINATION_IP_ADDRESS);
     p_network_packet->ip_packet_src_address = inet_addr(SOURCE_IP_ADDRESS);
 
+    //Calculating the checksum - break the header into 16 bit chunks. Sum these 16 bit chunks together and then 1 compliment them.
+    p_network_packet->ip_packet_checksum = 0; //Must start off as zero for the calculation
     
-    char * cDestMacAddress = DESTINATION_MAC_ADDRESS;
-    struct ether_addr * sDestMacAddress = ether_aton(cDestMacAddress);
-    if(sDestMacAddress == NULL)
-    {
-        printf("Incorrect MAC address");
-    }
-    printf("%d\n",sDestMacAddress);
+    //1. Array of 16 bit chunks
+    uint16_t * pu16IPHeader = &p_network_packet->ip_packet_version_and_ihl;
 
-    char * cSrcMacAddress = SOURCE_MAC_ADDRESS;
-    struct ether_addr * sSrcMacAddress = ether_aton(cSrcMacAddress);
-    if(sSrcMacAddress == NULL)
+    //2. 16-bit sum of data
+    uint16_t u16Sum = 0;
+    for (size_t i = 0; i < 8; i++)
     {
-        printf("Incorrect MAC address");
+        u16Sum += pu16IPHeader[i];
     }
-    printf("%d\n",sSrcMacAddress);
-    //uint8_t pu8DestMacAddress[6] = DESTINATION_MAC_ADDRESS;
-    //uint8_t pu8SrcMacAddress[6] = SOURCE_MAC_ADDRESS;
-    // for (size_t i = 0; i < 1; i++)
-    // {   
-    //     p_network_packet->ethernet_frame_dest_mac[i] = sDestMacAddress->ether_addr_octet[i];
-    //     p_network_packet->ethernet_frame_src_mac[i] = sSrcMacAddress->ether_addr_octet[i];
-    // }
 
+    //3. 1s compliment the data
+    uint16_t u16SumComplimented = ~u16Sum;
+
+    //4. Store checksum in packet.
+    p_network_packet->ip_packet_checksum = (u16SumComplimented);
+
+    //Ethernet Layer
+    uint8_t pu8DestMacAddress[6] = DESTINATION_MAC_ADDRESS;
+    uint8_t pu8SrcMacAddress[6] = SOURCE_MAC_ADDRESS;
     for (size_t i = 0; i < 6; i++)
-        printf("%x %x \n",(int32_t)p_network_packet->ethernet_frame_dest_mac[i], sDestMacAddress->ether_addr_octet[i]);
-    printf("\n");
-
-    // for (size_t i = 0; i < 6; i++)
-    //     printf("%x ",(int32_t)p_network_packet->ethernet_frame_dest_mac[i]);
-    // printf("\n");
+    {   
+        p_network_packet->ethernet_frame_dest_mac[i] = pu8DestMacAddress[i];
+        p_network_packet->ethernet_frame_src_mac[i] = pu8SrcMacAddress[i];
+    }
+    p_network_packet->ethernet_frame_ether_type = htons(0x0800);
     
+    uint8_t * p_temp = (uint8_t*) & p_network_packet->ip_packet_src_address;
+    printf("Source IP: %d.%d.%d.%d\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3]);
 
+    p_temp = (uint8_t*) & p_network_packet->ip_packet_dest_address;
+    printf("Destination IP: %d.%d.%d.%d\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3]);
     
-
+    p_temp = (uint8_t*) & p_network_packet->ethernet_frame_dest_mac;
+    printf("Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3],(int32_t)p_temp[4],(int32_t)p_temp[5]);
+    
+    p_temp = (uint8_t*) & p_network_packet->ethernet_frame_src_mac;
+    printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3],(int32_t)p_temp[4],(int32_t)p_temp[5]);
+    
+    printf("Packet Length excluding frame: %d bytes\n",(int32_t)u16IPPacketLengthBytes);
     //Ethernet Layer
     //p_network_packet->ethernet_frame_dest_mac = 
     //p_network_packet->ethernet_frame_src_mac = 
