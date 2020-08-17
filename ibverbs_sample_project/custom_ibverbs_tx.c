@@ -13,8 +13,6 @@
 //#include <net/if_arp.h>// Used for getting the MAC address from an interface name
 #include <net/ethernet.h>//MAC string to byte conversion
 
-//As far as a i can tell, the IBVERBS_PORT_NUM number corresponds to a physcial port on the NIC - I have not looked too deeply into this, just kept it to 1 as in the examples
-#define IBVERBS_PORT_NUM 1
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion */
 #define NUM_WE 512
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
@@ -48,34 +46,25 @@ struct __attribute__((__packed__)) network_packet {
     uint8_t udp_datagram_payload[PAYLOAD_SIZE_BYTES];
 };
 
+
+struct ibv_pd * get_ibv_device_from_ip(uint8_t * u8PortNumber);
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context *p_context);
 
 
 int main()
 {
-    struct ibv_device **dev_list;
     struct ibv_device *ib_dev;
     struct ibv_context *context;
     struct ibv_pd *pd;
     int ret;
+    uint8_t u8PortNum;
 
     printf("Network Packet Size: %ld\n", sizeof(struct network_packet));
 
-    /*1. Get the list of offload capable devices */
-    dev_list = ibv_get_device_list(NULL);
-    if (!dev_list)
-    {
-        printf("Failed to get devices list");
-        exit(1);
-    }
-    
-    /* In this example, we will use the first adapter (device) we find on the list (dev_list[0]) . You may change the code in case you have a setup with more than one adapter installed. */
-    ib_dev = dev_list[1];
-    
-    printf("RDMA device[%d]: name=%s guid=%lld\n", 1, ibv_get_device_name(ib_dev), (unsigned long long)ntohl(ibv_get_device_guid(ib_dev)));
-    if (!ib_dev)
-    {
-        printf("IB device not found\n");
+    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS*/
+    ib_dev = get_ibv_device_from_ip(&u8PortNum);
+    if(ib_dev == NULL){
+        printf("No NIC with matching SOURCE_IP_ADDRESS found\n");
         exit(1);
     }
 
@@ -139,7 +128,7 @@ int main()
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = IBVERBS_PORT_NUM;
+    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, i have a niggling concern that if it equals another number things will not work;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret < 0)
     {
@@ -275,24 +264,96 @@ int main()
     return 0;
 }
 
+
+struct ibv_pd * get_ibv_device_from_ip(uint8_t * u8PortIndex){
+    
+    struct ibv_device **dev_list;
+    struct ibv_device *ib_dev;
+    struct ibv_context *p_context;
+    int iNumDevices;
+    uint8_t u8DeviceFound = 0;
+
+    /* 1. Store the source IP address as four octets for ease of comparison */
+    uint8_t pu8SourceAddrOctets[4];
+    ((uint32_t *) pu8SourceAddrOctets)[0] = inet_addr(SOURCE_IP_ADDRESS);
+
+    /* 2. Get the list of offload capable devices */
+    dev_list = ibv_get_device_list(&iNumDevices);
+    if (!dev_list)
+    {
+        printf("Failed to get devices list");
+        exit(1);
+    }
+    
+    /* 3. Iterate through all offload capable devices to find the one with the correct IP address*/
+    for (size_t i = 0; i < iNumDevices; i++)
+    {   
+        ib_dev = dev_list[i];
+        printf("RDMA device[%d]: name=%s\n", i, ibv_get_device_name(ib_dev), (unsigned long long)ntohl(ibv_get_device_guid(ib_dev)));
+        if (!ib_dev)
+        {
+            printf("IB device not found\n");
+            exit(1);
+        }
+        
+        /* 3.1 The device context is required by the ibv_query_gid() function */
+        p_context = ibv_open_device(ib_dev);
+        if (!p_context)
+        {
+            printf("Couldn't get context for %s\n", ibv_get_device_name(ib_dev));
+            exit(1);
+        }
+
+        /* 3.2 Iterate through all the ports of each device*/
+        union ibv_gid gid;
+        *u8PortIndex = 1;
+        while(1)
+        {
+            /* 3.2.1 Get the port GID*/
+            //Not sure why but the second argument works when set to 2 for my test configuration, but 1 for others. If your IP address is not detected, try change the value to 1.
+            int rc = ibv_query_gid(p_context, *u8PortIndex, 2, &gid);
+            if (rc) 
+            {
+                break;
+            }
+            printf("\tPhysical Port: %d\n",*u8PortIndex);
+            printf("\t\tGID: GID Prefix: %d %d %d %d %d %d %d %d\n",(uint32_t)gid.raw[0], (uint32_t)gid.raw[1], (uint32_t)gid.raw[2], (uint32_t)gid.raw[3], (uint32_t)gid.raw[4], (uint32_t)gid.raw[5], (uint32_t)gid.raw[6], (uint32_t)gid.raw[7]);
+            printf("\t\tGID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
+            printf("\t\tIP Address From GID: %d.%d.%d.%d\n",(uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
+
+            /* 3.2.2 Compare the fields in the GID that correspond to IP address with the expected IP address */
+            if(pu8SourceAddrOctets[0] == gid.raw[12] && pu8SourceAddrOctets[1] == gid.raw[13] && pu8SourceAddrOctets[2] == gid.raw[14] && pu8SourceAddrOctets[3] == gid.raw[15])
+            {
+                u8DeviceFound = 1;
+                break;
+            }
+
+            *u8PortIndex = *u8PortIndex + 1;
+        }
+
+        /* 3.3 Cleanup */
+        ibv_close_device(p_context);
+        if(u8DeviceFound){
+            break;
+        }
+
+    }
+
+    /* 4. Set pointer to NULL if no device is found for a safe exit condition */
+    if(u8DeviceFound == 0){
+        *u8PortIndex = 0;
+        ib_dev = NULL;
+    }
+
+    /* 5. Cleanup */
+    ibv_free_device_list(dev_list);
+
+    /* 6. Return device pointer*/
+    return ib_dev;
+}
+
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context * p_context){
     
-
-    /* 1. Determine Interface IP and MAC Address - need to determine this from the context*/
-
-    //struct ifaddrs *ifap, *ifa;
-    //struct sockaddr_in *sa;
-    //char *addr;
-    //union ibv_gid gid;
-
-    //Not sure why but the second argument must be 2
-    //int rc = ibv_query_gid(p_context, 1, 2, &gid);
-    //if (rc) {
-	//    printf("Error, failed to query GID index %d of port %d in device '%s'\n",1, 0, ibv_get_device_name(p_context->device));
-    //}
-    //printf("GID: GID Prefix: %d %d %d %d %d %d %d %d\n",(uint32_t)gid.raw[0], (uint32_t)gid.raw[1], (uint32_t)gid.raw[2], (uint32_t)gid.raw[3], (uint32_t)gid.raw[4], (uint32_t)gid.raw[5], (uint32_t)gid.raw[6], (uint32_t)gid.raw[7]);
-    //printf("GID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
-
     //Transport Layer(L4)
     p_network_packet->upd_datagram_src_port = 0; //Keep to zero if no reply expected.
     p_network_packet->upd_datagram_dest_port = htons(UDP_PORT);
