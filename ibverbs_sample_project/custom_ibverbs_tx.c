@@ -346,20 +346,26 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     p_network_packet->ip_packet_checksum = 0; //Must start off as zero for the calculation
     
     //1. Array of 16 bit chunks
-    uint16_t * pu16IPHeader = &p_network_packet->ip_packet_version_and_ihl;
+    uint16_t * pu16IPHeader = (uint16_t *) &p_network_packet->ip_packet_version_and_ihl;
 
-    //2. 16-bit sum of data
-    uint16_t u16Sum = 0;
-    for (size_t i = 0; i < 8; i++)
+    //2.1 16-bit sum of data - we store it as a 32 bit number as the carry values need to be used.
+    uint32_t u32Sum = 0;
+    for (size_t i = 0; i < 10; i++)
     {
-        u16Sum += pu16IPHeader[i];
+        u32Sum += ntohs(pu16IPHeader[i]);//Remember network byte order
+    }
+    //2.2 Compensate for carry - every time a carry occurs, add one to the u32Sum. Can do this at the end as follows:
+    //This has not actually been tested yet
+    //At first glance this could be an if statement, however if adding all the carry bits causes an additional carry, then this step needs to occur again, this is why a while loop is necessary. 
+    while (u32Sum > 0xffff){
+        u32Sum = (u32Sum & 0xffff) + (u32Sum >> 16);
     }
 
     //3. 1s compliment the data
-    uint16_t u16SumComplimented = ~u16Sum;
+    uint16_t u16SumComplimented = ~(uint16_t)u32Sum;
 
     //4. Store checksum in packet.
-    p_network_packet->ip_packet_checksum = (u16SumComplimented);
+    p_network_packet->ip_packet_checksum = htons(u16SumComplimented);
 
     //Ethernet Layer
     uint8_t pu8DestMacAddress[6] = DESTINATION_MAC_ADDRESS;

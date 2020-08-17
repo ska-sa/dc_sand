@@ -26,5 +26,6 @@
 
 Requires Mellanox OFED Driver
 Tested on Mellanox ConnectX-5 NIC 
+Need to be sudo
 
 ### Test
