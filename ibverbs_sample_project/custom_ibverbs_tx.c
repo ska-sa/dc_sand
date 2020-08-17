@@ -9,39 +9,21 @@
 #include <arpa/inet.h>// Used for getting the MAC address from an interface name
 #include <sys/socket.h>// Used for getting the MAC address from an interface name
 #include <ifaddrs.h> // Used for getting the MAC address from an interface name
-#include <netpacket/packet.h>// Used for getting the MAC address from an interface name
-#include <net/if_arp.h>// Used for getting the MAC address from an interface name
+//#include <netpacket/packet.h>// Used for getting the MAC address from an interface name
+//#include <net/if_arp.h>// Used for getting the MAC address from an interface name
 #include <net/ethernet.h>//MAC string to byte conversion
 
-#define PORT_NUM 1
+//As far as a i can tell, the IBVERBS_PORT_NUM number corresponds to a physcial port on the NIC - I have not looked too deeply into this, just kept it to 1 as in the examples
+#define IBVERBS_PORT_NUM 1
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion */
-#define NUM_WE 4096
+#define NUM_WE 512
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
-//Store MAC_ADDRESS as array of bytes as this is the easiest to convert to a network byte order
-//#define DESTINATION_MAC_ADDRESS "1c:34:da:4b:93:92"
+//Store MAC_ADDRESS as a sequence of bytes, this is the easiest to work with for a simple example as there is no simple string to mac address function like the inet_addr function for IP addresses.
 #define DESTINATION_MAC_ADDRESS {0x1c,0x34,0xda,0x4b,0x93,0x92}
 #define SOURCE_IP_ADDRESS "10.100.18.9"
-//Store MAC_ADDRESS - this should already be in network byte order
 #define SOURCE_MAC_ADDRESS {0x1c,0x34,0xda,0x54,0x99,0xbc}
-//#define SOURCE_MAC_ADDRESS "1c:34:da:54:99:bc"
-
-
-/* template of packet to send - in this case icmp */
-#define DST_MAC 0x00, 0x01, 0x02, 0x03, 0x04, 0x05
-#define SRC_MAC 0xe4, 0x1d, 0x2d, 0xf3, 0xdd, 0xcc
-#define ETH_TYPE 0x08, 0x00
-#define IP_HDRS 0x45, 0x00, 0x00, 0x54, 0x00, 0x00, 0x40, 0x00, 0x40, 0x01, 0xaf, 0xb6
-#define SRC_IP 0x0d, 0x07, 0x38, 0x66
-#define DST_IP 0x0d, 0x07, 0x38, 0x7f
-#define IP_OPT 0x08, 0x00, 0x59, 0xd0, 0x88
-#define ICMP_HDR 0x2c, 0x00, 0x09, 0x52, 0xae, 0x96, 0x57, 0x00, 0x00
-
-// char packet[] = {
-//     DST_MAC , SRC_MAC, ETH_TYPE, IP_HDRS, SRC_IP, DST_IP, IP_OPT, ICMP_HDR,
-//     0x00, 0x00, 0x62, 0x21, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
-//     0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
-//     0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
-//     0x36, 0x37};
+#define UDP_PORT 7708
+#define PAYLOAD_SIZE_BYTES 4096
 
 struct __attribute__((__packed__)) network_packet {
     uint8_t ethernet_frame_dest_mac[6];
@@ -63,7 +45,7 @@ struct __attribute__((__packed__)) network_packet {
     uint16_t upd_datagram_dest_port;
     uint16_t upd_datagram_length;
     uint16_t upd_datagram_checksum;
-    uint8_t udp_datagram_payload[4096];
+    uint8_t udp_datagram_payload[PAYLOAD_SIZE_BYTES];
 };
 
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context *p_context);
@@ -157,7 +139,7 @@ int main()
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = 1;
+    qp_attr.port_num = IBVERBS_PORT_NUM;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret < 0)
     {
@@ -211,7 +193,7 @@ int main()
     populate_packet(&packet, context);
     memcpy(buf, &packet, sizeof(struct network_packet));
     
-    int n;
+    int n=0;
     struct ibv_sge sg_entry;
     struct ibv_send_wr wr[NUM_WE], *bad_wr;
     int msgs_completed;
@@ -311,7 +293,27 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     //printf("GID: GID Prefix: %d %d %d %d %d %d %d %d\n",(uint32_t)gid.raw[0], (uint32_t)gid.raw[1], (uint32_t)gid.raw[2], (uint32_t)gid.raw[3], (uint32_t)gid.raw[4], (uint32_t)gid.raw[5], (uint32_t)gid.raw[6], (uint32_t)gid.raw[7]);
     //printf("GID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
 
-    //IP Layer
+    //Transport Layer(L4)
+    p_network_packet->upd_datagram_src_port = 0; //Keep to zero if no reply expected.
+    p_network_packet->upd_datagram_dest_port = htons(UDP_PORT);
+    
+    /* The UDP checksum has been set to zero as it is quite expensive to calculate and is not checked by any of
+     * MeerKATs systems. If this is required, there are methods to offload this calculation to the NIC. From what I can
+     * tell, this is only supported on MLNX_OFED 5 and above. This program was tested on MLNX_OFED version 4 and as such
+     * I have not looked too deeply into offloads. If you want to implement it yourself, see the IBV_SEND_IP_CSUM 
+     * flag described here: https://manpages.debian.org/testing/libibverbs-dev/ibv_post_send.3.en.html. 
+     */
+    p_network_packet->upd_datagram_checksum = 0; 
+
+    //The length of UDP datagram includes UDP header and payload
+    uint16_t u16UDPDatagramLengthBytes= PAYLOAD_SIZE_BYTES
+        + sizeof(p_network_packet->upd_datagram_src_port)
+        + sizeof(p_network_packet->upd_datagram_dest_port)
+        + sizeof(p_network_packet->upd_datagram_checksum)
+        + sizeof(p_network_packet->upd_datagram_length);
+    
+    p_network_packet->upd_datagram_length = htons(u16UDPDatagramLengthBytes);
+    //IP Layer(L3)
 
     //This value is hardcoded - have not bothered to look into it
     p_network_packet->ip_packet_version_and_ihl = 0x45;
@@ -367,7 +369,7 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     //4. Store checksum in packet.
     p_network_packet->ip_packet_checksum = htons(u16SumComplimented);
 
-    //Ethernet Layer
+    //Ethernet Layer(L2)
     uint8_t pu8DestMacAddress[6] = DESTINATION_MAC_ADDRESS;
     uint8_t pu8SrcMacAddress[6] = SOURCE_MAC_ADDRESS;
     for (size_t i = 0; i < 6; i++)
