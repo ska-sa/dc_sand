@@ -13,11 +13,11 @@
 #include <infiniband/verbs.h>
 #include <stdio.h>
 #include <unistd.h>
-
 /* Functions in this library are used for converting IP address strings to character arrays and for converting data 
  * between network and host byte order.
  */
 #include <arpa/inet.h> 
+#include <sys/time.h>   //For timing functions
 
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion - 2048 seems to be the maximum*/
 #define NUM_WE 64
@@ -255,6 +255,18 @@ int main()
     int iNumCompletedByWR;
     struct ibv_wc wc;
     struct ibv_send_wr * bad_wr = NULL;
+
+    //For measuring the data rate
+    printf("\nStarting Transmission:\n\n");
+
+    struct timeval sTimerStartTime;
+    struct timeval sInitialStartTime;
+    struct timeval sCurrentTime;
+    uint64_t u64StartWR = 0;
+    uint64_t u64CurrentWR;
+    gettimeofday(&sInitialStartTime,NULL);
+    gettimeofday(&sTimerStartTime,NULL);
+
     while(1) 
     {
 
@@ -294,6 +306,27 @@ int main()
                 }
             }while(u64NumPostedTotal - u64NumCompletedTotal >= SQ_NUM_DESC/NUM_WE);
         }
+
+        //Measure time and if a second has passed print the data rate to screen.
+        gettimeofday(&sCurrentTime,NULL);
+        double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
+                            - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
+        if(dTimeDifference > 2){
+            //Calculate data rate
+            u64CurrentWR = u64NumCompletedTotal;
+            double dDataTransferred_Gb = (u64CurrentWR - u64StartWR) * NUM_WE * sizeof(struct network_packet)/1000000000 * 8;
+            double dDataRate_Gbps = dDataTransferred_Gb/dTimeDifference;
+            double dTotalDataTransferred_GB = u64NumCompletedTotal * NUM_WE * sizeof(struct network_packet)/1000000000;
+            double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
+                            - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
+            printf("\rRunning Time: %.2fs. Total Transmitted %.3f GB. Current Data Rate: %.3f Gbps",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps);
+            fflush(stdout);
+
+            //Set timer up for next second
+            u64StartWR = u64CurrentWR;
+            sTimerStartTime = sCurrentTime;
+        }
+
     }
 
     printf("We are done\n");
