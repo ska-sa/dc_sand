@@ -1,20 +1,26 @@
-
+/**
+ * @file    custom_ibverbs_tx.c
+ *
+ * @brief   Sample program that demonstrates how to transmit raw udp ethernet network data at high data rates using the 
+ *          ibverbs library.
+ * 
+ * TODO: Give it in more details
+ * 
+ * @author  Gareth Callanan
+ *          South African Radio Astronomy Observatory(SARAO)
+ */
 
 #include <infiniband/verbs.h>
-//#include <infiniband/verbs_exp.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <string.h>
 
-#include <arpa/inet.h>// Used for getting the MAC address from an interface name
-#include <sys/socket.h>// Used for getting the MAC address from an interface name
-#include <ifaddrs.h> // Used for getting the MAC address from an interface name
-//#include <netpacket/packet.h>// Used for getting the MAC address from an interface name
-//#include <net/if_arp.h>// Used for getting the MAC address from an interface name
-#include <net/ethernet.h>//MAC string to byte conversion
+/* Functions in this library are used for converting IP address strings to character arrays and for converting data 
+ * between network and host byte order.
+ */
+#include <arpa/inet.h> 
 
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion - 2048 seems to be the maximum*/
-#define NUM_WE 512
+#define NUM_WE 64
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
 //Store MAC_ADDRESS as a sequence of bytes, this is the easiest to work with for a simple example as there is no simple string to mac address function like the inet_addr function for IP addresses.
 #define DESTINATION_MAC_ADDRESS {0x1c,0x34,0xda,0x4b,0x93,0x92}
@@ -103,7 +109,9 @@ int main()
         .send_cq = cq,
         .recv_cq = cq,
         .cap = {
-            /* number of allowed outstanding sends without waiting for a completion */
+            /* number of allowed outstanding sends without waiting for a completion - completions are explained
+             * further down in the program.
+             */
             .max_send_wr = SQ_NUM_DESC,
             /* maximum number of pointers in each descriptor */
             .max_send_sge = 1,
@@ -206,7 +214,7 @@ int main()
     
     /* 11.1 Initialise all required structs */
     struct ibv_sge sg_entry[NUM_WE];
-    struct ibv_send_wr wr[NUM_WE], *bad_wr;
+    struct ibv_send_wr wr[NUM_WE];
     memset(wr, 0, sizeof(wr[0])*NUM_WE);
 
     /* 11.2 Link SGEs to WRs and link WRs together in a linked list */
@@ -221,57 +229,70 @@ int main()
         wr[i].sg_list = &sg_entry[i]; //Point WR to SGE
         wr[i].next = &wr[i+1]; //Link WRs together 
         wr[i].opcode = IBV_WR_SEND;
+        wr[i].send_flags = 0;
     }
 
     wr[NUM_WE-1].next = NULL; //Last WR in list must not point to any further WRs.
+    
+    /* By setting this IBV_SEND_SIGNALED flag, the last WR will generate a work completion event once the packet has 
+     * been transmitted. Explained in more detail below.
+     */
+    wr[NUM_WE-1].send_flags |= IBV_SEND_SIGNALED;  
 
+    /* 12. Send Operation 
+     * The send operation is very lightweight and simple. It requires calling ibv_post_send(). This function will tell
+     * then NIC to transmit all packets in the completion list.
+     *  
+     * Only a limited number of WRs can queued on the NIC at any one time (see the ".max_send_wr = SQ_NUM_DESC" line 
+     * in the ibv_qp_init_attr struct". In order to track this, ibverbs defines a Work Completion(WC). This is a struct
+     * that can be returned by polling the NIC with the ibv_poll_cq command. In this example, I have configured a
+     * completion event to occur at the end of of each WR list by setting the wr send flag in the last element of the 
+     * list. See line: "wr[NUM_WE-1].send_flags |= IBV_SEND_SIGNALED" above.
+     */
 
-    /* 12. Send Operation */
-    int n=0;
-    int msgs_completed;
+    uint64_t u64NumPostedTotal = 0;
+    uint64_t u64NumCompletedTotal = 0;
+    int iNumCompletedByWR;
     struct ibv_wc wc;
+    struct ibv_send_wr * bad_wr = NULL;
     while(1) 
     {
-        /*
-         * inline means data will be copied to space pre-allocated in descriptor
-         * as long as it is small enough. otherwise pointer reference will be used.
-         * see max_inline_data = 512 above.
-         */
+
+        /* This inline flag was part of the sample program I based this on. I am not sure how to use if effectivly, 
+         * however I am leaving it here as a reminder to investigate further. */
         //wr.send_flags = IBV_SEND_INLINE;
     
-        /*
-        * we ask for a completion every half queue. only interested in completions to monitor progress.
-        */
-        if ( (n % (SQ_NUM_DESC/2)) == 0) {
-            wr[0].wr_id = n;
-            wr[0].send_flags |= IBV_SEND_SIGNALED;
-        }
-
-        /* push descriptor to hardware */
-
+        /* 12.1 Push WRs to hardware */
         ret = ibv_post_send(qp, &wr[0], &bad_wr);
-        if (ret < 0) 
+        if (ret != 0 /*|| bad_wr != NULL*/) 
         {
-            printf("failed in post send\n");
+            printf("failed in post send. Errno: %d\n",ret);
             exit(1);
         }
-        n+=NUM_WE;
-
-        /* poll for completion after half ring is posted */
-        if ( (n % (SQ_NUM_DESC/2)) == 0 && n > 0)
+        u64NumPostedTotal++;
+        
+        /* 12.2 poll for completion after half ring is posted */
+        if (u64NumPostedTotal - u64NumCompletedTotal > 1)
         {
-            msgs_completed = ibv_poll_cq(cq, 1, &wc);
-            if (msgs_completed > 0) 
-            {
-                //printf("completed message %ld\n", wc.wr_id);
-            }
-            else if (msgs_completed < 0) 
-            {
-                printf("Polling error\n");
-                exit(1);
+            iNumCompletedByWR = 0;
+            /* ibv_poll_cq is non blocking and will return zero most of the time, keep calling until a non-zero value 
+             * is returned.
+             */ 
+            while(!iNumCompletedByWR){
+                iNumCompletedByWR = ibv_poll_cq(cq, 1, &wc);
+                u64NumCompletedTotal+=iNumCompletedByWR;
+                if (iNumCompletedByWR > 0) 
+                {   
+                    //Here for debug purposes, empty otherwise
+                    //printf("%d %ld %d %ld %d\n",msgs_completed,wc.wr_id,wc.opcode,wc.status, u64NumPostedTotal - u64NumCompletedTotal);
+                }
+                else if (iNumCompletedByWR < 0) 
+                {
+                    printf("Polling error\n");
+                    exit(1);
+                }
             }
         }
-
     }
 
     printf("We are done\n");
