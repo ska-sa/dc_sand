@@ -119,7 +119,7 @@ class DataProcessorBase:
         Parameters
         ----------
         data_proc_id : str
-            Name of the subarray product
+            Name of the data processor
         config : dict
             Configuration data as a (python) dictionary
         proc_controller : aiokatcp.DeviceServer
@@ -131,7 +131,6 @@ class DataProcessorBase:
         self.config = config
         self.data_proc_id = data_proc_id
         self.proc_controller = proc_controller
-        self.dead_event = asyncio.Event()  # Set when reached state DEAD
 
         self._state: ProcessorState = ProcessorState.CONFIGURING
 
