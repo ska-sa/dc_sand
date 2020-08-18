@@ -258,8 +258,8 @@ int main()
     while(1) 
     {
 
-        /* This inline flag was part of the sample program I based this on. I am not sure how to use if effectivly, 
-         * however I am leaving it here as a reminder to investigate further. */
+        /* This inline flag was part of the sample program I based this on. I am not sure how to use if effectivly.
+         * I am leaving it here as a reminder to investigate further. */
         //wr.send_flags = IBV_SEND_INLINE;
     
         /* 12.1 Push WRs to hardware */
@@ -272,26 +272,27 @@ int main()
         u64NumPostedTotal++;
         
         /* 12.2 poll for completion after half ring is posted */
-        if (u64NumPostedTotal - u64NumCompletedTotal > 1)
+        if (u64NumPostedTotal - u64NumCompletedTotal > 0)
         {
             iNumCompletedByWR = 0;
-            /* ibv_poll_cq is non blocking and will return zero most of the time, keep calling until a non-zero value 
-             * is returned.
-             */ 
-            while(!iNumCompletedByWR){
+            /* ibv_poll_cq is non blocking and will return zero most of the time. If the send queue is not full this is
+             * not an issue, but if the send queue is full, ibv_post_send will return error code 12. As such if the
+             * queue is full, keep polling continously until it is no longer full.
+             */
+            do{
                 iNumCompletedByWR = ibv_poll_cq(cq, 1, &wc);
                 u64NumCompletedTotal+=iNumCompletedByWR;
                 if (iNumCompletedByWR > 0) 
                 {   
                     //Here for debug purposes, empty otherwise
-                    //printf("%d %ld %d %ld %d\n",msgs_completed,wc.wr_id,wc.opcode,wc.status, u64NumPostedTotal - u64NumCompletedTotal);
+                    //printf("%d %ld %d %ld %d\n",iNumCompletedByWR,wc.wr_id,wc.opcode,wc.status, u64NumPostedTotal - u64NumCompletedTotal);
                 }
                 else if (iNumCompletedByWR < 0) 
                 {
                     printf("Polling error\n");
                     exit(1);
                 }
-            }
+            }while(u64NumPostedTotal - u64NumCompletedTotal >= SQ_NUM_DESC/NUM_WE);
         }
     }
 
