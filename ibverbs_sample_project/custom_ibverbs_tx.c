@@ -13,7 +13,7 @@
 //#include <net/if_arp.h>// Used for getting the MAC address from an interface name
 #include <net/ethernet.h>//MAC string to byte conversion
 
-#define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion */
+#define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion - 2048 seems to be the maximum*/
 #define NUM_WE 512
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
 //Store MAC_ADDRESS as a sequence of bytes, this is the easiest to work with for a simple example as there is no simple string to mac address function like the inet_addr function for IP addresses.
@@ -47,7 +47,7 @@ struct __attribute__((__packed__)) network_packet {
 };
 
 
-struct ibv_pd * get_ibv_device_from_ip(uint8_t * u8PortNumber);
+struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortNumber);
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context *p_context);
 
 
@@ -61,7 +61,7 @@ int main()
 
     printf("Network Packet Size: %ld\n", sizeof(struct network_packet));
 
-    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS*/
+    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS */
     ib_dev = get_ibv_device_from_ip(&u8PortNum);
     if(ib_dev == NULL){
         printf("No NIC with matching SOURCE_IP_ADDRESS found\n");
@@ -69,7 +69,7 @@ int main()
     }
 
     /* 2. Get the device context */
-    /* Get context to device. The context is a descriptor and needed for resource tracking and operations */
+    /* Get context to device. The context is needed for resource tracking and operations */
     context = ibv_open_device(ib_dev);
     if (!context)
     {
@@ -111,7 +111,8 @@ int main()
             .max_inline_data = 512,
             .max_recv_wr = 0
         },
-        .qp_type = IBV_QPT_RAW_PACKET,
+        /* This flag specifies that we are constructing raw ethernet packets. */
+        .qp_type = IBV_QPT_RAW_PACKET, 
     };
 
     /* 6. Create Queue Pair (QP) - Send Ring */
@@ -122,13 +123,13 @@ int main()
         exit(1);
     }
 
-    /* 7. Initialize the QP (receive ring) and assign a port */
+    /* 7. Initialize the QP (receive ring) and assign the correct physical port */
     struct ibv_qp_attr qp_attr;
     int qp_flags;
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, i have a niggling concern that if it equals another number things will not work;
+    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling concern that if it equals another number things will not work;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret < 0)
     {
@@ -137,8 +138,8 @@ int main()
     }
     memset(&qp_attr, 0, sizeof(qp_attr));
 
-    /* 8. Move the ring to ready to send in two steps (a,b) */
-    /* a. Move ring state to ready to receive, this is needed to be able to move ring to ready to send even if receive queue is not enabled */
+    /* 8. Move this ring to a "ready" state. Both the ready to send and receive states need to be entered. */
+    /* 8.1. Move ring state to ready to receive */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTR;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
@@ -148,7 +149,7 @@ int main()
         exit(1);
     }
 
-    /* b. Move the ring to ready to send */
+    /* 8.2. Move ring state to ready to send */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTS;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
@@ -158,64 +159,77 @@ int main()
         exit(1);
     }
 
-    /* 9. Allocate Memory */
-    int buf_size = sizeof(struct network_packet)*SQ_NUM_DESC; /* maximum size of data to be access directly by hw */
-    void *buf;
-    buf = malloc(buf_size);
-    if (!buf)
+    /* 9. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will need to contain raw data as well as ethernet frame/ip packet/udp datagram headers */
+    /* 9.1 Allocate a space in memory to accomodate NUM_WE packets. */
+    uint64_t u64PacketBufferSize = sizeof(struct network_packet)*NUM_WE;
+    struct network_packet *psPacketBuffer = malloc(u64PacketBufferSize);
+    if (!psPacketBuffer)
     {
         printf("Could not allocate memory\n");
         exit(1);   
     }
 
+    /* 9.2 Populate the network headers of each packet in the buffer - The data fields of these packets are left blank */
+    struct network_packet sSinglePacket;
+    memset(&sSinglePacket,0x00,sizeof(struct network_packet));
+    populate_packet(&sSinglePacket, context);
+    for (size_t i = 0; i < NUM_WE; i++)
+    {
+        memcpy(&psPacketBuffer[i], &sSinglePacket, sizeof(struct network_packet));
+    }
+
     /* 10. Register the user memory so it can be accessed by the HW directly */
     struct ibv_mr *mr;
-    mr = ibv_reg_mr(pd, buf, buf_size, IBV_ACCESS_LOCAL_WRITE);
+    mr = ibv_reg_mr(pd, psPacketBuffer, u64PacketBufferSize, IBV_ACCESS_LOCAL_WRITE);
     if (!mr)
     {
         printf("Couldn't register mr\n");
         exit(1);
     }
 
-    struct network_packet packet;
-    memset(&packet,0x00,sizeof(struct network_packet));
-    populate_packet(&packet, context);
-    memcpy(buf, &packet, sizeof(struct network_packet));
+    /* 11. Configure all data structures that will be communicate information to the NIC
+     *  There are two main structures used here. A work request(WR) and a scatter gather entry(SGE).
+     *  a) An SGE describes the location and size of data to send. In our instance an SGE points to a single packet
+     *  b) For sending, a WR is posted to the NIC and describes the transaction to be performed in the NIC. For this
+     *  simple case a WR tells the NIC that a "send" operation takes place and provides a pointer to the SGE which 
+     *  points to the data to be sent.
+     *      i) Multiple WRs can be chained together as a linked list(wr[x].next points to next WR in list). The first 
+     *         wr needs to be posted to the QP and the NIC will handle the entire WR list. This further reduces the load
+     *         on the CPU. For this example. NUM_WE WRs are posted to the NIC at once.
+     *      ii) A WR can point to multiple SGEs. This behaviour is not made very obvious in the documentation. I think 
+     *         all the different SGEs will be combined into a single packet, but it could be transmitted as multiple
+     *         packets. If this were the case, you could have the header info in a single SGE and the payload in a 
+     *         different SGE which could be useful. It may be that this is not even supported for raw ethernet packet
+     *         mode. Someone should test this out. All the examples I have seen have a single SGE per WR.
+     */
     
-    int n=0;
-    struct ibv_sge sg_entry;
+    
+    /* 11.1 Initialise all required structs */
+    struct ibv_sge sg_entry[NUM_WE];
     struct ibv_send_wr wr[NUM_WE], *bad_wr;
-    int msgs_completed;
-    struct ibv_wc wc;
-
-    /* scatter/gather entry describes location and size of data to send*/
-    sg_entry.addr = (uint64_t)buf;
-    sg_entry.length = sizeof(struct network_packet);
-    sg_entry.lkey = mr->lkey;
     memset(wr, 0, sizeof(wr[0])*NUM_WE);
 
-    /*
-     * descriptor for send transaction - details:
-     * - how many pointer to data to use
-     * - if this is a single descriptor or a list (next == NULL single)
-     * - if we want inline and/or completion
-     */
-
-    for (size_t i = 0; i < NUM_WE - 1; i++)
+    /* 11.2 Link SGEs to WRs and link WRs together in a linked list */
+    for (size_t i = 0; i < NUM_WE; i++)
     {
+        //Point the scatter gather entry to the correct packet
+        sg_entry[i].addr = (uint64_t)&psPacketBuffer[i];
+        sg_entry[i].length = sizeof(struct network_packet);
+        sg_entry[i].lkey = mr->lkey;
+
         wr[i].num_sge = 1;
-        wr[i].sg_list = &sg_entry;
-        wr[i].next = &wr[i+1];
+        wr[i].sg_list = &sg_entry[i]; //Point WR to SGE
+        wr[i].next = &wr[i+1]; //Link WRs together 
         wr[i].opcode = IBV_WR_SEND;
     }
 
-    wr[NUM_WE-1].num_sge = 1;
-    wr[NUM_WE-1].sg_list = &sg_entry;
-    wr[NUM_WE-1].next = NULL;
-    wr[NUM_WE-1].opcode = IBV_WR_SEND;
+    wr[NUM_WE-1].next = NULL; //Last WR in list must not point to any further WRs.
 
 
-    /* 10. Send Operation */
+    /* 12. Send Operation */
+    int n=0;
+    int msgs_completed;
+    struct ibv_wc wc;
     while(1) 
     {
         /*
@@ -265,7 +279,7 @@ int main()
 }
 
 
-struct ibv_pd * get_ibv_device_from_ip(uint8_t * u8PortIndex){
+struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex){
     
     struct ibv_device **dev_list;
     struct ibv_device *ib_dev;
@@ -289,7 +303,7 @@ struct ibv_pd * get_ibv_device_from_ip(uint8_t * u8PortIndex){
     for (size_t i = 0; i < iNumDevices; i++)
     {   
         ib_dev = dev_list[i];
-        printf("RDMA device[%d]: name=%s\n", i, ibv_get_device_name(ib_dev), (unsigned long long)ntohl(ibv_get_device_guid(ib_dev)));
+        printf("RDMA device[%ld]: name=%s\n", i, ibv_get_device_name(ib_dev));
         if (!ib_dev)
         {
             printf("IB device not found\n");
