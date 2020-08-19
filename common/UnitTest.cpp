@@ -40,9 +40,7 @@ void UnitTest::run_test()
 
     /// The kernel under test is executed.
     cudaEventRecord(m_eventKernelStart);
-    
     run_kernel();
-    
     cudaEventRecord(m_eventKernelFinish);
     cudaEventSynchronize(m_eventKernelFinish);
     cudaEventElapsedTime(&m_fKernelElapsedTime_ms, m_eventKernelStart, m_eventKernelFinish);

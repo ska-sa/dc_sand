@@ -59,7 +59,6 @@ void VectorAddTest::transfer_HtoD()
     GPU_ERRCHK(cudaMemcpy(m_piDVectorB, m_piHVectorB, m_uVectorLength*sizeof(*m_piHVectorA), cudaMemcpyHostToDevice));
 }
 
-#pragma region Original Kernel
 
 //Kernel adds A and B, storing the result to C.
 __global__ void kernel_vector_add(int *piVectorA, int *piVectorB, int *piVectorC, size_t ulVectorLength)
@@ -78,8 +77,6 @@ void VectorAddTest::run_kernel()
     kernel_vector_add<<<m_ulNumBlocks, m_ulBlockSize>>>(m_piDVectorA, m_piDVectorB, m_piDVectorC, m_uVectorLength);
     GPU_ERRCHK(cudaGetLastError());
 }
-
-#pragma endregion 
 
 
 void VectorAddTest::transfer_DtoH()
