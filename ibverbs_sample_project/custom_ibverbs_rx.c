@@ -5,9 +5,10 @@
 #include <arpa/inet.h>
 
 #define RQ_NUM_DESC 512
-#define PORT 20069
 #define ENTRY_SIZE 9000 /* The maximum size of each received packet - set to jumbo frame */
 #define LOCAL_INTERFACE "10.100.18.9"
+#define REMOTE_INTERFACE "10.100.18.7"
+#define UDP_PORT 7708
 
 int main()
 {
@@ -166,9 +167,9 @@ int main()
     struct
     {
         struct ibv_flow_attr attr;
-        //ibv_flow_spec_eth eth __attribute__((packed));
-        struct ibv_flow_spec_ipv4 ip;
-        //struct ibv_flow_spec_tcp_udp udp ;
+        struct ibv_flow_spec_eth eth __attribute__((packed));
+        struct ibv_flow_spec_ipv4 ip __attribute__((packed));
+        struct ibv_flow_spec_tcp_udp udp __attribute__((packed));
     } __attribute__((packed)) flow_rule;
     memset(&flow_rule, 0, sizeof(flow_rule));
 
@@ -176,14 +177,26 @@ int main()
     flow_rule.attr.type = IBV_FLOW_ATTR_NORMAL;
     flow_rule.attr.priority = 0;
     flow_rule.attr.size = sizeof(flow_rule);
-    flow_rule.attr.num_of_specs = 1;
+    flow_rule.attr.num_of_specs = 3;
     flow_rule.attr.port = 1;
+
+    //Set L2 Layer flow rules
+    flow_rule.eth.type = IBV_FLOW_SPEC_ETH;
+    flow_rule.eth.size = sizeof(flow_rule.eth);
 
     //Set L3 IP Layer flow rules
     flow_rule.ip.type = IBV_FLOW_SPEC_IPV4;
     flow_rule.ip.size = sizeof(flow_rule.ip);
     flow_rule.ip.val.dst_ip = inet_addr(LOCAL_INTERFACE);
     flow_rule.ip.mask.dst_ip = 0xFFFFFFFF;
+    flow_rule.ip.val.src_ip = inet_addr(REMOTE_INTERFACE);
+    flow_rule.ip.mask.src_ip = 0xFFFFFFFF;
+
+    //Set L4 IP Layer flow rules
+    flow_rule.udp.type = IBV_FLOW_SPEC_UDP;
+    flow_rule.udp.size = sizeof(flow_rule.udp);
+    flow_rule.udp.val.dst_port = htons(UDP_PORT);
+    flow_rule.udp.mask.dst_port = 0xFFFF;
 
     /* 13. Create steering rule */
 
