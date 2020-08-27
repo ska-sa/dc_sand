@@ -7,7 +7,61 @@ a bunch of other DeviceServers, which represent hypothetical processing nodes.
 """
 
 import aiokatcp
+import logging
 from typing import List, Tuple
+
+
+class SensorMirror(aiokatcp.SensorWatcher):
+    """Proof-of-concept SensorWatcher to demonstrate that we can watch and aggregate node sensors centrally.
+
+    Shouln't actually need to change that much on shift to a production version, turns out the operation
+    is relatively simple.
+    """
+
+    def __init__(self, client: aiokatcp.Client, server: aiokatcp.DeviceServer, node_name: str):
+        """Create an instance of the SensorMirror.
+        
+        Parameters
+        ----------
+        client
+            An aiokatcp.Client object. The SensorMirror rides on this connection and uses it to get sensor
+            information.
+        server
+            The Corr3Servlet to which the SensorMirror will send its mirrored sensor information.
+        node_name
+            The name of the node that we are connecting to. This is prepended to the names of the sensors
+            coming in to distinguish them from each other.
+        """
+        super().__init__(client)
+        self.server = server
+        self._interface_stale = False
+        self.node_name = node_name
+        logging.debug(f"SensorMirror for {self.node_name} created, connected to {client.host}:{client.port}.")
+
+    def rewrite_name(self, name: str):
+        """Prepend the name of the node to the name of the incoming sensors."""
+        return f"{self.node_name}.{name}"  # Simple enough. Add the node name in front.
+
+    def sensor_added(self, name: str, description: str, units: str, type_name: str, *args: bytes) -> None:
+        """Add a sensor to the server in response to detection of a new sensor downstream."""
+        super().sensor_added(name, description, units, type_name, *args)
+        self.server.sensors.add(self.sensors[f"{self.node_name}.{name}"])
+        self._interface_stale = True
+        logging.info(f"Added sensor {name} on {self.node_name}")
+
+    def sensor_removed(self, name: str) -> None:
+        """Remove a sensor in response to removal of the corresponding downstream one."""
+        del self.server.sensors[f"{self.node_name}.{name}"]
+        self._interface_stale = True
+        super().sensor_removed(name)
+        logging.info(f"Removed sensor {name} on {self.node_name}")
+
+    def batch_stop(self) -> None:
+        """Called at the end of a batch of back-to-back updates."""
+        if self._interface_stale:
+            self.server.mass_inform("interface-changed", "sensor-list")
+            self._interface_stale = False
+            logging.info(f"Sent interface-changed on {self.node_name}")
 
 
 class Corr3Servlet(aiokatcp.DeviceServer):
@@ -51,7 +105,9 @@ class Corr3Servlet(aiokatcp.DeviceServer):
         self.n_antennas = n_antennas
         self.x_engine_endpoints = x_engine_endpoints  # Since this is POC code, we are not doing any data validation.
         self.x_engine_clients: List[aiokatcp.Client] = []
+        self.sensor_mirrors: List[SensorMirror] = []
         super(Corr3Servlet, self).__init__(host=host, port=port, **kwargs)
+        logging.info(f'Corr3Servlet "{self.name}" created.')
 
     async def start(self):
         """Do the usual startup stuff plus initiating connections to DSP nodes.
@@ -66,13 +122,14 @@ class Corr3Servlet(aiokatcp.DeviceServer):
         """
         # Call the parent start() function
         await super(Corr3Servlet, self).start()
+        logging.info(f'Corr3Servlet "{self.name}" started.')
         # Pin on a little bit of functionality of our own...
-        for host, port in self.x_engine_endpoints:
-            # So it's worth noting that this is not the most efficient way to run this particular loop. The connections do not
-            # happen concurrently, but one after the other. For this simple, small use-case, it's fine. But if we end up having
-            # dozens of processing nodes, we may have to optimise this somewhat.
-            client = await aiokatcp.Client.connect(host=host, port=port)
+        for n, (host, port) in enumerate(self.x_engine_endpoints):
+            client = aiokatcp.Client(host=host, port=port)
+            sensor_mirror = SensorMirror(client, self, f"node{n}")  # More thought needs to be given to naming.
+            client.add_sensor_watcher(sensor_mirror)
             self.x_engine_clients.append(client)
+            self.sensor_mirrors.append(sensor_mirror)
 
     async def on_stop(self):
         """Tidy up the client connections before quitting completely."""
@@ -87,7 +144,7 @@ class Corr3Servlet(aiokatcp.DeviceServer):
 
         # For the time being, we are assuming that the B-engines understand pretty much the same request.
         for client_no, client in enumerate(self.x_engine_clients):
-            print(f"Forwarding the ?beam-weight message to client no {client_no}")
+            logging.debug(f"Forwarding the ?beam-weight message to client no {client_no}")
             _reply, _informs = await client.request("beam-weights", data_stream, *weights)
 
         # TODO: The ICD says "the explanation describes the current weights applied to the inputs of a specific beam".
