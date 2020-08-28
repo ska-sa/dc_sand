@@ -3,19 +3,12 @@
 This was used in manual tests of the corr3-proto-servlet, in order to demonstrate whether or not the servlet was
 actually connecting to another katcp device server and passing messages forward.
 
-Pass the port to run the server on as an argument. Or don't, and it'll default to 1234.
+Pass the port to run the server on as an argument. Or don't, and it'll default to 5678.
 """
 import asyncio
 import aiokatcp
 import logging
 import sys
-import logging
-
-from aiokatcp import Sensor
-from ngkcs.data_processor import (
-    DeviceStatus,
-    device_status_to_sensor_status,
-)
 
 LOCALHOST = "127.0.0.1"
 DEFAULT_PORT = 5678

@@ -1,4 +1,12 @@
-"""Control of a single subarray product."""
+"""Control of a single Data Processing node.
+
+This represents the python-wrapped processor object which enables GPU-based computation on a server.
+Currently this is represented by the configure and deconfigure commands, which launch and destroy a docker container.
+The docker container represents a 'GPU-based data-processor', e.g an F-engine.
+
+This can be launched and interfaced with separately from the 'parent' ProcessController.
+Launch it via python3.5+ in the command-line, and pass a port number as the first argument - it will default to 5680.
+"""
 
 import asyncio
 from configparser import ConfigParser
