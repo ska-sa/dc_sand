@@ -1,11 +1,11 @@
-all: custom_ibverbs_tx custom_ibverbs_rx
+all: ibverbs_tx ibverbs_rx
 
-custom_ibverbs_tx: custom_ibverbs_tx.c network_packet.h
-	gcc -Wall -g -O2 -o custom_ibverbs_tx  custom_ibverbs_tx.c -lpthread -libverbs
+ibverbs_tx: ibverbs_tx.c common_functions.h
+	gcc -Wall -g -O2 -o ibverbs_tx  ibverbs_tx.c -lpthread -libverbs
 
-custom_ibverbs_rx: custom_ibverbs_rx.c network_packet.h
-	gcc -Wall -g -O2 -o custom_ibverbs_rx  custom_ibverbs_rx.c -lpthread -libverbs
+ibverbs_rx: ibverbs_rx.c common_functions.h
+	gcc -Wall -g -O2 -o ibverbs_rx  ibverbs_rx.c -lpthread -libverbs
 
 clean: 
-	rm -f custom_ibverbs_rx custom_ibverbs_tx *.o
+	rm -f ibverbs_rx ibverbs_tx *.o
 

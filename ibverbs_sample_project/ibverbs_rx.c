@@ -1,39 +1,33 @@
-//#include <rdma/rdma_cma.h>
 #include <infiniband/arch.h>
 #include <infiniband/verbs.h>
 #include <infiniband/verbs_exp.h>
-#include <arpa/inet.h>
-#include "network_packet.h"
+/* Functions in this library are used for converting IP address strings to character arrays and for converting data 
+ * between network and host byte order.
+ */
+#include <arpa/inet.h> 
+#include <sys/time.h>   //For timing functions
+
+#include "common_functions.h"
 
 #define RQ_NUM_DESC 2048
 #define ENTRY_SIZE 9000 /* The maximum size of each received packet - set to jumbo frame */
-#define LOCAL_INTERFACE "10.100.18.9"
-#define REMOTE_INTERFACE "10.100.18.7"
+#define LOCAL_INTERFACE_IP_ADDRESS "10.100.18.9"
+#define REMOTE_INTERFACE_IP_ADDRESS "10.100.18.7"
 #define UDP_PORT 7708
 
 int main()
 {
-
-    struct ibv_device **dev_list;
     struct ibv_device *ib_dev;
     struct ibv_context *context;
     struct ibv_pd *pd;
+    uint8_t u8PortNum;
 
     int ret;
-     
-    /* Get the list of offload capable devices */
-    dev_list = ibv_get_device_list(NULL);
-    if (!dev_list) {
-        perror("Failed to get IB devices list");
-        exit(1);
-    }
 
     /* 1. Get Device */
-    /* In this example, we will use the first adapter (device) we find on the list (dev_list[0]) . You may change the code in case you have a setup with more than one adapter installed. */
-    ib_dev = dev_list[1];
-    printf("RDMA device[%d]: name=%s\n", 1, ibv_get_device_name(dev_list[1]));
-    if (!ib_dev) {
-        printf("IB device not found\n");
+    ib_dev = get_ibv_device_from_ip(&u8PortNum, LOCAL_INTERFACE_IP_ADDRESS);
+    if(ib_dev == NULL){
+        printf("No NIC with matching SOURCE_IP_ADDRESS found\n");
         exit(1);
     }
 
@@ -81,7 +75,6 @@ int main()
     };
 
     /* 6. Create Queue Pair (QP) - Receive Ring */
-
     qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp) {
         printf("Couldn't create RSS QP\n");
@@ -89,13 +82,12 @@ int main()
     }
 
     /* 7. Initialize the QP (receive ring) and assign a port */
-
     struct ibv_qp_attr qp_attr;
     int qp_flags;
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = 1;
+    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling concern that if it equals another number things will not work;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret) {
         printf("failed modify qp to init %d %d\n",ret, errno);
@@ -122,7 +114,6 @@ int main()
     }
 
     /* 10. Register the user memory so it can be accessed by the HW directly */
-
     struct ibv_mr *mr;
     mr = ibv_reg_mr(pd, buf, buf_size, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) {
@@ -188,9 +179,9 @@ int main()
     //Set L3 IP Layer flow rules
     flow_rule.ip.type = IBV_FLOW_SPEC_IPV4;
     flow_rule.ip.size = sizeof(flow_rule.ip);
-    flow_rule.ip.val.dst_ip = inet_addr(LOCAL_INTERFACE);
+    flow_rule.ip.val.dst_ip = inet_addr(LOCAL_INTERFACE_IP_ADDRESS);
     flow_rule.ip.mask.dst_ip = 0xFFFFFFFF;
-    flow_rule.ip.val.src_ip = inet_addr(REMOTE_INTERFACE);
+    flow_rule.ip.val.src_ip = inet_addr(REMOTE_INTERFACE_IP_ADDRESS);
     flow_rule.ip.mask.src_ip = 0xFFFFFFFF;
 
     //Set L4 IP Layer flow rules
@@ -199,35 +190,13 @@ int main()
     flow_rule.udp.val.dst_port = htons(UDP_PORT);
     flow_rule.udp.mask.dst_port = 0xFFFF;
 
-    /* 13. Create steering rule */
-
+    /* 13. Attach steering rule to qp*/
     struct ibv_flow *eth_flow;
     eth_flow = ibv_create_flow(qp, &flow_rule.attr);
     if (!eth_flow) {
         printf("Couldn't attach steering flow\n");
         exit(1);
     }
-
-    // This was just a test to see the flags supported by the device.
-    // struct ibv_device_attr device_attr;
-    // ibv_query_device(context, &device_attr);
-    // printf("Normal: 0x%08x\n",device_attr.device_cap_flags);
-    // int num1 = device_attr.device_cap_flags;
-
-    // struct ibv_exp_device_attr attr;
-    // ibv_exp_query_device(context, &attr);
-    // printf("Experimental: 0x%08x\n",attr.exp_device_cap_flags);
-    // int num2 = attr.exp_device_cap_flags;
-
-    // for (size_t i = 0; i < 32; i++)
-    // {
-    //     int lastPos1 = 0x1 & num1;
-    //     int lastPos2 = 0x1 & num2;
-    //     printf("%ld Norm %d Exp %d\n",i,lastPos1, lastPos2);
-    //     num1 = num1 >> 1;
-    //     num2 = num2 >> 1;
-    // }
-
     printf("Initialisation Complete - Checking for received packets\n");
 
     /* 14. Wait for CQ event upon message received, and print a message */
@@ -275,11 +244,10 @@ int main()
             else
             {
                 uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;
-                //printf("message %ld received size %d, %d, %ld\n", wc.wr_id, wc.byte_len, msgs_completed, u64PacketIndexDiff);    
+                //printf("message %ld received size %d\n", wc.wr_id, wc.byte_len);    
                 if(u64PacketIndexDiff != 1)
                 {
                     u64NumPacketDrops += u64PacketIndexDiff - 1;
-                    //printf("Packet Dropped: %ld %ld %ld; ",u64NoPacketDropInterval,u64PacketIndexDiff,u64CurrentDatagramPayloadPacketIndex);
                     u64NoPacketDropInterval = 0;
                 }
                 u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex;
@@ -302,7 +270,7 @@ int main()
         //Measure time and if a second has passed print the data rate to screen.
         //
         
-        if(u64NumPacketsReceived % 10000000 == 0){
+        if(u64NumPacketsReceived % 30000000 == 0){
             //Calculate data rate
             gettimeofday(&sCurrentTime,NULL);
             double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
@@ -314,7 +282,7 @@ int main()
             double dTotalDataTransferred_GB = u64NumPacketsReceived * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
-            printf("\rRunning Time: %.2fs. Total Received %.3f GB. Current Data Rate: %.3f Gbps, packets/drops %ld/%ld",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
+            printf("\rRunning Time: %.2fs. Total Received %.3f GB. Current Data Rate: %.3f Gbps, Packets: received/dropped %ld/%ld",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
             fflush(stdout);
 
             //Set timer up for next second
@@ -337,156 +305,3 @@ int main()
 
 }
 
-//#define LOCAL_INTERFACE "10.100.18.9"
-//#define PORT 20069
-
-//NOTE: A completion vector seems to be a mapping of the IRQs from the RDAM NIC to a specific CPU
-
-// int main(int argc, char *argv[]){
-//     int status;
-//     struct ibv_device *ib_dev;
-//     struct ibv_device **dev_list;
-//     printf("RDMA Test\n");
-//     //struct rdma_event_channel *event_channel = rdma_create_event_channel();
-//     printf("RDMA Event Channel Created\n");
-
-//     //Part 1
-//     // struct rdma_cm_id *cm_id = malloc(sizeof(struct rdma_cm_id));
-//     // int status = rdma_create_id(event_channel, &cm_id, NULL, RDMA_PS_UDP); //Should this be NULL
-//     // if (status < 0){
-//     //     printf("rdma_create_id failed\n");
-//     //     return 1;
-//     // }
-//     // printf("RDMA CM ID created: %d\n",status);
-
-//     dev_list = ibv_get_device_list(NULL);
-//     ib_dev = dev_list[1];
-//     printf("RDMA device[%d]: name=%s\n", 1, ibv_get_device_name(dev_list[1]));
-//     if (!ib_dev) {
-//         fprintf(stderr, "IB device not found\n");
-//         exit(1);
-//     }
-
-//     //Part 2
-//     // struct sockaddr_in *sin1 = malloc(sizeof(struct sockaddr));
-//     // sin1->sin_family = AF_INET; 
-//     // sin1->sin_port = htons(PORT);
-//     // sin1->sin_addr.s_addr = inet_addr(LOCAL_INTERFACE);//INADDR_ANY;
-    
-//     // status = rdma_bind_addr(cm_id, (struct sockaddr *)sin1);
-// 	// if (status) {
-// 	// 	printf("rdma_bind_addr failed\n");
-// 	// 	return 1;
-// 	// }
-// 	// printf("rdma_bind_addr successful\n");
-
-//     struct ibv_context *context = ibv_open_device(ib_dev);
-//     if (!context){
-//         printf("ibv_open_device failed\n");
-//         return 1;
-//     }
-//     printf("ibv_open_device successful\n");
-    
-//     //Step 3
-//     //struct ibv_pd *pd = ibv_alloc_pd(cm_id->verbs);
-//     struct ibv_pd *pd = ibv_alloc_pd(context);
-//     if (!pd){
-//         printf("ibv_alloc_pd failed\n");
-//         return 1;
-//     }
-//     printf("ibv_alloc_pd successful\n");
-
-//     //Step 4
-//     //struct ibv_comp_channel *comp_channel = ibv_create_comp_channel(cm_id->verbs);
-//     // struct ibv_comp_channel *comp_channel = ibv_create_comp_channel(context);
-//     // if (!comp_channel)
-//     // {
-//     //     printf("ibv_create_comp_channel failed\n");
-//     //     return 1;
-//     // }
-//     // printf("ibv_create_comp_channel succesful\n");
-
-//     //Step 5
-//     int iNumCqe = 512; //Number of completion queue entries to be held in the completion queue, not sure on the order of magnitude for this queue
-//     int iCompVector = 1; //Some mapping of IRQs to specific cores, needs to be investigated
-//     //struct ibv_cq *recv_cq = ibv_create_cq(cm_id->verbs, iNumCqe, NULL, comp_channel, iCompVector);//Might need to be ibv_exp_create_cq
-//     struct ibv_cq *recv_cq = ibv_create_cq(context, iNumCqe, NULL, NULL, 0);//Might need to be ibv_exp_create_cq
-//     //struct ibv_cq *recv_cq = ibv_create_cq(context, iNumCqe, NULL, comp_channel, iCompVector);//Might need to be ibv_exp_create_cq
-//     if(!recv_cq)
-//     {
-//         printf("ibv_create_cq failed\n");
-//         return 1;
-//     }
-//     //if (ibv_req_notify_cq(recv_cq, 0)){
-//     //    printf("ibv_req_notify_cq failed\n");
-//     //    return 1;
-//     //}
-//     printf("ibv_create_cq succesful\n");
-
-//     //Step 6 - as far as I can tell this step is only useful to make sure the queue pair object has a seperate send and recv completion queue(cq), the send cq is not actually used
-//     //struct ibv_cq *send_cq = ibv_create_cq(cm_id->verbs, 1, NULL, NULL, 0);//Might need to be ibv_exp_create_cq
-//     struct ibv_cq *send_cq = ibv_create_cq(context, 1, NULL, NULL, 0);//Might need to be ibv_exp_create_cq
-//     if(!send_cq)
-//     {
-//         printf("ibv_create_cq failed\n");
-//         return 1;
-//     }
-//     //if (ibv_req_notify_cq(send_cq, 0)){
-//     //    printf("ibv_req_notify_cq failed\n");
-//     //    return 1;
-//     //}
-//     printf("ibv_create_cq succesful\n");
-
-//     //Step 7
-//     struct ibv_qp_init_attr attr;
-//     //
-//     memset(&attr, 0, sizeof(attr));
-//     attr.send_cq = send_cq;
-//     attr.recv_cq = recv_cq;
-//     attr.qp_type = IBV_QPT_RAW_PACKET;//Bmerry has this set to IBV_QPT_RAW_PACKET, throws an error when I do this.
-//     attr.cap.max_send_wr = 1;
-//     attr.cap.max_recv_wr = iNumCqe;
-//     attr.cap.max_send_sge = 1;
-//     attr.cap.max_recv_sge = 1;
-
-//     struct ibv_qp *qp = ibv_create_qp(pd, &attr);
-//     //struct ibv_qp *qp = ibv_exp_create_qp(cm_id->verbs, &attr);
-//     //status =  rdma_create_qp(cm_id, pd, &attr);
-//     if(qp)
-//     {
-//         printf("ibv_create_qp failed %d\n",status);
-//         return 1;
-//     }
-//     printf("ibv_create_qp succesful\n");
-
-//     //Step 8
-//     int iBufSize_bytes = 1000000;
-//     uint8_t * buf = calloc(iBufSize_bytes, sizeof(uint8_t));
-//     printf("Buffer allocated\n");
-
-//     struct ibv_mr * mr = ibv_reg_mr(pd, buf, iBufSize_bytes * sizeof (uint8_t), IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE); //Should it be rdma_reg_memory_region
-//     if(!mr)
-//     {
-//         printf("ibv_reg_mr failed\n");
-//         return 1;
-//     }
-//     printf("ibv_reg_mr succesful\n");
-//     //std::vector<ibv_flow_t> flows;
-//     //ibv_mr_t mr;
-
-
-//     printf("Clean Up\n");
-//     ibv_dereg_mr(mr);
-//     free(buf);
-//     //rdma_destroy_qp(cm_id);
-//     ibv_destroy_qp(qp);
-//     ibv_destroy_cq(recv_cq);
-//     ibv_destroy_cq(send_cq);
-//     //ibv_destroy_comp_channel(comp_channel);
-//     //rdma_destroy_event_channel(event_channel);
-//     //rdma_destroy_id(cm_id);
-//     //free(sin1);
-//     //free(cm_id);
-//     printf("Finished\n");
-//     return 0;
-// }
