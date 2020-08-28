@@ -3,8 +3,9 @@
 #include <infiniband/verbs.h>
 #include <infiniband/verbs_exp.h>
 #include <arpa/inet.h>
+#include "network_packet.h"
 
-#define RQ_NUM_DESC 512
+#define RQ_NUM_DESC 2048
 #define ENTRY_SIZE 9000 /* The maximum size of each received packet - set to jumbo frame */
 #define LOCAL_INTERFACE "10.100.18.9"
 #define REMOTE_INTERFACE "10.100.18.7"
@@ -233,26 +234,63 @@ int main()
     int msgs_completed;
     struct ibv_wc wc;
 
-    //sleep(10);
+    
+    struct timeval sTimerStartTime;
+    struct timeval sInitialStartTime;
+    struct timeval sCurrentTime;
+
+    uint64_t u64PreviousDatagramPayloadPacketIndex=0;
+    uint64_t u64CurrentDatagramPayloadPacketIndex=0;
+    uint64_t u64NoPacketDropInterval = 0;
+    uint64_t u64NumPacketDrops = 0;
+    uint64_t u64NumPacketsReceived = 0;
+
+    gettimeofday(&sInitialStartTime,NULL);
+    gettimeofday(&sTimerStartTime,NULL);
+
+    uint64_t u64StartPostSendCount = 0;
+    uint64_t u64CurrentPostSendCount;
 
     while(1) 
     {
         /* wait for completion */
         msgs_completed = ibv_poll_cq(cq_recv, 1, &wc);
         if (msgs_completed > 0) {
-        /*
-         * completion includes:
-         * -status of descriptor
-         * -index of descriptor completing
-         * -size of the incoming packets
-         */
-        printf("message %ld received size %d\n", wc.wr_id, wc.byte_len);
-        sg_entry.addr = (uint64_t)buf + wc.wr_id*ENTRY_SIZE;
-        wr.wr_id = wc.wr_id;
-        
-        /* after processed need to post back buffer */
-        ibv_post_recv(qp, &wr, &bad_wr);
-        
+            /*
+            * completion includes:
+            * -status of descriptor
+            * -index of descriptor completing
+            * -size of the incoming packets
+            */
+
+            sg_entry.addr = (uint64_t)buf + wc.wr_id*ENTRY_SIZE;
+            struct network_packet * p_network_packet = (struct network_packet *)sg_entry.addr;
+            u64CurrentDatagramPayloadPacketIndex = *(uint64_t*) &p_network_packet->udp_datagram_payload;
+            u64NumPacketsReceived++;
+
+            if(u64PreviousDatagramPayloadPacketIndex == 0)
+            {
+                u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex -1;
+            }
+            else
+            {
+                uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;
+                //printf("message %ld received size %d, %d, %ld\n", wc.wr_id, wc.byte_len, msgs_completed, u64PacketIndexDiff);    
+                if(u64PacketIndexDiff != 1)
+                {
+                    u64NumPacketDrops += u64PacketIndexDiff - 1;
+                    //printf("Packet Dropped: %ld %ld %ld; ",u64NoPacketDropInterval,u64PacketIndexDiff,u64CurrentDatagramPayloadPacketIndex);
+                    u64NoPacketDropInterval = 0;
+                }
+                u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex;
+            }
+
+            wr.wr_id = wc.wr_id;
+            /* after processed need to post back buffer */
+            ibv_post_recv(qp, &wr, &bad_wr);
+            u64NoPacketDropInterval++;
+            
+            //gettimeofday(&sCurrentTime,NULL);
         } 
         else if (msgs_completed < 0) 
         {
@@ -260,6 +298,30 @@ int main()
             exit(1);
 
         }
+
+        //Measure time and if a second has passed print the data rate to screen.
+        //
+        
+        if(u64NumPacketsReceived % 10000000 == 0){
+            //Calculate data rate
+            gettimeofday(&sCurrentTime,NULL);
+            double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
+                        - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
+
+            u64CurrentPostSendCount = u64NumPacketsReceived;
+            double dDataReceived_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) * sizeof(struct network_packet)/1000000000 * 8;
+            double dDataRate_Gbps = dDataReceived_Gb/dTimeDifference;
+            double dTotalDataTransferred_GB = u64NumPacketsReceived * sizeof(struct network_packet)/1000000000;
+            double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
+                            - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
+            printf("\rRunning Time: %.2fs. Total Received %.3f GB. Current Data Rate: %.3f Gbps, packets/drops %ld/%ld",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
+            fflush(stdout);
+
+            //Set timer up for next second
+            u64StartPostSendCount = u64CurrentPostSendCount;
+            sTimerStartTime = sCurrentTime;
+        }
+
     }
 
     printf("Cleanup\n");

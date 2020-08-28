@@ -13,11 +13,14 @@
 #include <infiniband/verbs.h>
 #include <stdio.h>
 #include <unistd.h>
+
 /* Functions in this library are used for converting IP address strings to character arrays and for converting data 
  * between network and host byte order.
  */
 #include <arpa/inet.h> 
 #include <sys/time.h>   //For timing functions
+
+#include "network_packet.h"
 
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion - 2048 seems to be the maximum*/
 #define NUM_WE_PER_POST_SEND 64
@@ -27,30 +30,9 @@
 #define SOURCE_IP_ADDRESS "10.100.18.9"
 #define SOURCE_MAC_ADDRESS {0x1c,0x34,0xda,0x54,0x99,0xbc}
 #define UDP_PORT 7708
-#define PAYLOAD_SIZE_BYTES 4096
 
-struct __attribute__((__packed__)) network_packet {
-    uint8_t ethernet_frame_dest_mac[6];
-    uint8_t ethernet_frame_src_mac[6];
-    uint16_t ethernet_frame_ether_type;
-    
-    uint8_t ip_packet_version_and_ihl;
-    uint8_t ip_packet_dscp_and_ecn;
-    uint16_t ip_packet_total_length;
-    uint16_t ip_packet_identification;
-    uint16_t ip_packet_flags_and_fragment_offset;
-    uint8_t ip_packet_ttl;
-    uint8_t ip_packet_protocol;
-    uint16_t ip_packet_checksum;
-    uint32_t ip_packet_src_address;
-    uint32_t ip_packet_dest_address;
 
-    uint16_t upd_datagram_src_port;
-    uint16_t upd_datagram_dest_port;
-    uint16_t upd_datagram_length;
-    uint16_t upd_datagram_checksum;
-    uint8_t udp_datagram_payload[PAYLOAD_SIZE_BYTES];
-};
+
 
 
 struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortNumber);
