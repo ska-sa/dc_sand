@@ -20,7 +20,7 @@
 #include <sys/time.h>   //For timing functions
 
 #define SQ_NUM_DESC 2048 /* maximum number of sends waiting for completion - 2048 seems to be the maximum*/
-#define NUM_WE 64
+#define NUM_WE_PER_POST_SEND 64
 #define DESTINATION_IP_ADDRESS "10.100.18.7"
 //Store MAC_ADDRESS as a sequence of bytes, this is the easiest to work with for a simple example as there is no simple string to mac address function like the inet_addr function for IP addresses.
 #define DESTINATION_MAC_ADDRESS {0x1c,0x34,0xda,0x4b,0x93,0x92}
@@ -54,7 +54,7 @@ struct __attribute__((__packed__)) network_packet {
 
 
 struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortNumber);
-void populate_packet(struct network_packet * p_network_packet, struct ibv_context *p_context);
+void populate_packet(struct network_packet * p_network_packet, struct ibv_context * p_context);
 
 
 int main()
@@ -168,8 +168,8 @@ int main()
     }
 
     /* 9. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will need to contain raw data as well as ethernet frame/ip packet/udp datagram headers */
-    /* 9.1 Allocate a space in memory to accomodate NUM_WE packets. */
-    uint64_t u64PacketBufferSize = sizeof(struct network_packet)*NUM_WE;
+    /* 9.1 Allocate a space in memory to accomodate SQ_NUM_DESC packets. */
+    uint64_t u64PacketBufferSize = sizeof(struct network_packet)*SQ_NUM_DESC;
     struct network_packet *psPacketBuffer = malloc(u64PacketBufferSize);
     if (!psPacketBuffer)
     {
@@ -181,7 +181,7 @@ int main()
     struct network_packet sSinglePacket;
     memset(&sSinglePacket,0x00,sizeof(struct network_packet));
     populate_packet(&sSinglePacket, context);
-    for (size_t i = 0; i < NUM_WE; i++)
+    for (size_t i = 0; i < SQ_NUM_DESC; i++)
     {
         memcpy(&psPacketBuffer[i], &sSinglePacket, sizeof(struct network_packet));
     }
@@ -203,7 +203,9 @@ int main()
      *  points to the data to be sent.
      *      i) Multiple WRs can be chained together as a linked list(wr[x].next points to next WR in list). The first 
      *         wr needs to be posted to the QP and the NIC will handle the entire WR list. This further reduces the load
-     *         on the CPU. For this example. NUM_WE WRs are posted to the NIC at once.
+     *         on the CPU. For this example. NUM_WE_PER_POST_SEND WRs are posted to the NIC at once. We have SQ_NUM_DESC WRs
+     *         as we can have that many in the send queue at any one time - each needs to be unique so we can point to a 
+     *         unique SGE 
      *      ii) A WR can point to multiple SGEs. This behaviour is not made very obvious in the documentation. I think 
      *         all the different SGEs will be combined into a single packet, but it could be transmitted as multiple
      *         packets. If this were the case, you could have the header info in a single SGE and the payload in a 
@@ -213,12 +215,12 @@ int main()
     
     
     /* 11.1 Initialise all required structs */
-    struct ibv_sge sg_entry[NUM_WE];
-    struct ibv_send_wr wr[NUM_WE];
-    memset(wr, 0, sizeof(wr[0])*NUM_WE);
+    struct ibv_sge sg_entry[SQ_NUM_DESC];
+    struct ibv_send_wr wr[SQ_NUM_DESC];
+    memset(wr, 0, sizeof(wr[0])*SQ_NUM_DESC);
 
     /* 11.2 Link SGEs to WRs and link WRs together in a linked list */
-    for (size_t i = 0; i < NUM_WE; i++)
+    for (size_t i = 0; i < SQ_NUM_DESC; i++)
     {
         //Point the scatter gather entry to the correct packet
         sg_entry[i].addr = (uint64_t)&psPacketBuffer[i];
@@ -232,12 +234,15 @@ int main()
         wr[i].send_flags = 0;
     }
 
-    wr[NUM_WE-1].next = NULL; //Last WR in list must not point to any further WRs.
+    for (size_t i = NUM_WE_PER_POST_SEND; i <= SQ_NUM_DESC; i+=NUM_WE_PER_POST_SEND)
+    {
+        wr[i-1].next = NULL; //Last WR in list must not point to any further WRs.
     
-    /* By setting this IBV_SEND_SIGNALED flag, the last WR will generate a work completion event once the packet has 
-     * been transmitted. Explained in more detail below.
-     */
-    wr[NUM_WE-1].send_flags |= IBV_SEND_SIGNALED;  
+        /* By setting this IBV_SEND_SIGNALED flag, the last WR will generate a work completion event once the packet has 
+        * been transmitted. Explained in more detail below.
+        */
+        wr[i-1].send_flags |= IBV_SEND_SIGNALED;
+    }  
 
     /* 12. Send Operation 
      * The send operation is very lightweight and simple. It requires calling ibv_post_send(). This function will tell
@@ -247,7 +252,10 @@ int main()
      * in the ibv_qp_init_attr struct". In order to track this, ibverbs defines a Work Completion(WC). This is a struct
      * that can be returned by polling the NIC with the ibv_poll_cq command. In this example, I have configured a
      * completion event to occur at the end of of each WR list by setting the wr send flag in the last element of the 
-     * list. See line: "wr[NUM_WE-1].send_flags |= IBV_SEND_SIGNALED" above.
+     * list. See line: "wr[NUM_WE_PER_POST_SEND-1].send_flags |= IBV_SEND_SIGNALED" above.
+     * 
+     * I count the packets and add this packet index in the first 8 bytes of the UDP payload. The receiver can then use
+     * this packet index number to detrmine if the packet have been dropped or received out of order.
      */
 
     uint64_t u64NumPostedTotal = 0;
@@ -262,8 +270,15 @@ int main()
     struct timeval sTimerStartTime;
     struct timeval sInitialStartTime;
     struct timeval sCurrentTime;
-    uint64_t u64StartWR = 0;
-    uint64_t u64CurrentWR;
+
+    /* These two variables are used for tracking the number of post sends at the start of the timing window and at the
+    end - only use for timing*/
+    uint64_t u64StartPostSendCount = 0;
+    uint64_t u64CurrentPostSendCount;
+
+    uint64_t u64PacketIndex = 0;
+    uint64_t u64NextWRPostSendIndex = 0;
+
     gettimeofday(&sInitialStartTime,NULL);
     gettimeofday(&sTimerStartTime,NULL);
 
@@ -274,8 +289,16 @@ int main()
          * I am leaving it here as a reminder to investigate further. */
         //wr.send_flags = IBV_SEND_INLINE;
     
-        /* 12.1 Push WRs to hardware */
-        ret = ibv_post_send(qp, &wr[0], &bad_wr);
+        /* 12.1 Track which set of WRs is being transmitted next and update the count on these packets */
+        for (size_t i = 0; i < NUM_WE_PER_POST_SEND; i++)
+        {
+            *(uint64_t*) &psPacketBuffer[u64NextWRPostSendIndex * NUM_WE_PER_POST_SEND + i].udp_datagram_payload = u64PacketIndex;
+            u64PacketIndex++;
+        }
+        u64NextWRPostSendIndex = (u64NextWRPostSendIndex + 1) % (SQ_NUM_DESC / NUM_WE_PER_POST_SEND);
+
+        /* 12.2 Push WRs to hardware */
+        ret = ibv_post_send(qp, &wr[u64NextWRPostSendIndex*NUM_WE_PER_POST_SEND], &bad_wr);
         if (ret != 0 /*|| bad_wr != NULL*/) 
         {
             printf("failed in post send. Errno: %d\n",ret);
@@ -283,7 +306,7 @@ int main()
         }
         u64NumPostedTotal++;
         
-        /* 12.2 poll for completion after half ring is posted */
+        /* 12.3 poll for completion after half ring is posted */
         if (u64NumPostedTotal - u64NumCompletedTotal > 0)
         {
             iNumCompletedByWR = 0;
@@ -304,7 +327,7 @@ int main()
                     printf("Polling error\n");
                     exit(1);
                 }
-            }while(u64NumPostedTotal - u64NumCompletedTotal >= SQ_NUM_DESC/NUM_WE);
+            }while(u64NumPostedTotal - u64NumCompletedTotal >= SQ_NUM_DESC/NUM_WE_PER_POST_SEND);
         }
 
         //Measure time and if a second has passed print the data rate to screen.
@@ -313,17 +336,17 @@ int main()
                             - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
         if(dTimeDifference > 2){
             //Calculate data rate
-            u64CurrentWR = u64NumCompletedTotal;
-            double dDataTransferred_Gb = (u64CurrentWR - u64StartWR) * NUM_WE * sizeof(struct network_packet)/1000000000 * 8;
+            u64CurrentPostSendCount = u64NumCompletedTotal;
+            double dDataTransferred_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000 * 8;
             double dDataRate_Gbps = dDataTransferred_Gb/dTimeDifference;
-            double dTotalDataTransferred_GB = u64NumCompletedTotal * NUM_WE * sizeof(struct network_packet)/1000000000;
+            double dTotalDataTransferred_GB = u64NumCompletedTotal * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
             printf("\rRunning Time: %.2fs. Total Transmitted %.3f GB. Current Data Rate: %.3f Gbps",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps);
             fflush(stdout);
 
             //Set timer up for next second
-            u64StartWR = u64CurrentWR;
+            u64StartPostSendCount = u64CurrentPostSendCount;
             sTimerStartTime = sCurrentTime;
         }
 
