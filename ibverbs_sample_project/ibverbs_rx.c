@@ -208,7 +208,7 @@ int main()
     }
     printf("Initialisation Complete - Checking for received packets\n");
 
-    /* 14. Wait for CQ event upon message received, and print a message */
+    /* 14. This section is the actual running part of the program. It runs continously  */
     uint64_t u64NumMessagesComplete;
     struct ibv_wc wc;
 
@@ -248,8 +248,7 @@ int main()
             u64CurrentDatagramPayloadPacketIndex = *(uint64_t*) &p_network_packet->udp_datagram_payload;
             u64NumPacketsReceived++;
 
-            /*
-             * 14.3 Check that we are not missing a packet. Note, the first packet to be received will always be
+            /* 14.3 Check that we are not missing a packet. Note, the first packet to be received will always be
              * counted as a dropped packet so I have explicitly excluded this in the missing packet calculation  
              */
             uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;   
@@ -267,9 +266,12 @@ int main()
             }
             u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex;
 
-
+            /* 14.4  After we have this data we need to post a WR back on the receive buffer. The wc.wr_id lets us know
+             * which work request was processed which lets us calculate what location in the buffer the packet will be
+             * stored in (note: this is applicable to the "sg_entry.addr = (uint64_t)pDataBuffer + wc.wr_id*ENTRY_SIZE"
+             * line above.)
+             */
             wr.wr_id = wc.wr_id;
-            /* after processed need to post back buffer */
             ibv_post_recv(qp, &wr, &bad_wr);
         } 
         else if (u64NumMessagesComplete < 0) 
@@ -279,11 +281,12 @@ int main()
 
         }
 
-        //Measure time and if a second has passed print the data rate to screen.
-        //
-        
+        /* If a set number of packets have been received, print information to the screen. I would have preferred to 
+         * have waited a set amount of time, but calling gettimeofday() repeatedly resulted in dropped a packets. The
+         * 30000000 packet threshold was chosen to correspond to roughly 1 print every 10s at a 100 Gbps data rate.
+         */
         if(u64NumPacketsReceived % 30000000 == 0){
-            //Calculate data rate
+            //Calculate data rates
             gettimeofday(&sCurrentTime,NULL);
             double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                         - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
@@ -297,13 +300,14 @@ int main()
             printf("\rRunning Time: %.2fs. Total Received %.3f GB. Current Data Rate: %.3f Gbps, Packets: received/dropped %ld/%ld",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
             fflush(stdout);
 
-            //Set timer up for next second
+            //Set timer up for next timing interval.
             u64StartPostSendCount = u64CurrentPostSendCount;
             sTimerStartTime = sCurrentTime;
         }
 
     }
 
+    //15. This never actually gets called but is left here for completeness.
     printf("Cleanup\n");
 
     ibv_destroy_flow(eth_flow);

@@ -1,7 +1,7 @@
 /**
  * @file    custom_ibverbs_tx.c
  *
- * @brief   Sample program that demonstrates how to transmit raw udp ethernet network data at high data rates using the 
+ * @brief   Sample program that demonstrates how to transmit raw UDP ethernet network data at high data rates using the 
  *          ibverbs library.
  * 
  * TODO: Give it in more details
@@ -42,15 +42,14 @@ int main()
 
     printf("Network Packet Size: %ld\n", sizeof(struct network_packet));
 
-    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS */
+    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS. */
     ib_dev = get_ibv_device_from_ip(&u8PortNum, SOURCE_IP_ADDRESS);
     if(ib_dev == NULL){
         printf("No NIC with matching SOURCE_IP_ADDRESS found\n");
         exit(1);
     }
 
-    /* 2. Get the device context */
-    /* Get context to device. The context is needed for resource tracking and operations */
+    /* 2. Get the device context. The context is needed for resource tracking and operations. */
     context = ibv_open_device(ib_dev);
     if (!context)
     {
@@ -58,8 +57,10 @@ int main()
         exit(1);
     }
 
-    /* 3. Allocate Protection Domain */
-    /* Allocate a protection domain to group memory regions (MR) and rings */
+    /* 3. Allocate Protection Domain - a protection domain is almost a finer grained version of a context. It groups 
+     * specific memory regions and queues that are logically related (user defines what that means) together. There can
+     * be multiple PDs per NIC.
+     */
     pd = ibv_alloc_pd(context);
     if (!pd)
     {
@@ -67,7 +68,10 @@ int main()
         exit(1);
     }
 
-    /* 4. Create Complition Queue (CQ) */
+    /* 4. Create Completion Queue (CQ) - a completion queue is how the NIC communicates with the CPU. When the NIC 
+     * completes an operation(either sending or receiving a packet in this case), it will post to the CQ. The CPU can
+     * then poll a CQ to determine if the NIC has done some work. 
+     */
     struct ibv_cq *cq;
     cq = ibv_create_cq(context, SQ_NUM_DESC, NULL, NULL, 0);
     if (!cq)
@@ -76,11 +80,15 @@ int main()
         exit (1);
     }
 
-    /* 5. Initialize QP */
+    /* 5. Initialize queue pair structs - The NIC has two work queues. One for sending data and one for receiving.
+     * These queues are grouped togther in what is known as a queue pair(QP). The CPU posts work requests(WRs) to these 
+     * queues to tell the NIC how to send and receive data. The CPU receives work completions(WQ) from these work queues
+     * telling it that data has been sent or received. 
+     */    
     struct ibv_qp *qp;
     struct ibv_qp_init_attr qp_init_attr = {
         .qp_context = NULL,
-        /* report send completion to cq */
+        /* report completions to cq - you can have seperate CQs for send and receive. The example just had one*/
         .send_cq = cq,
         .recv_cq = cq,
         .cap = {
@@ -98,7 +106,7 @@ int main()
         .qp_type = IBV_QPT_RAW_PACKET, 
     };
 
-    /* 6. Create Queue Pair (QP) - Send Ring */
+    /* 6. Create Queue Pair (QP)*/
     qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp)
     {
@@ -112,7 +120,8 @@ int main()
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling concern that if it equals another number things will not work;
+    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling \
+    concern that if it equals another number things will not work;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret < 0)
     {
@@ -142,7 +151,10 @@ int main()
         exit(1);
     }
 
-    /* 9. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will need to contain raw data as well as ethernet frame/ip packet/udp datagram headers */
+    /* 9. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will
+     * contain payload data as well as ethernet frame/ip packet/udp datagram headers.
+     */
+
     /* 9.1 Allocate a space in memory to accomodate SQ_NUM_DESC packets. */
     uint64_t u64PacketBufferSize = sizeof(struct network_packet)*SQ_NUM_DESC;
     struct network_packet *psPacketBuffer = malloc(u64PacketBufferSize);
@@ -152,7 +164,8 @@ int main()
         exit(1);   
     }
 
-    /* 9.2 Populate the network headers of each packet in the buffer - The data fields of these packets are left blank */
+    /* 9.2 Populate the network headers of each packet in the buffer - The data fields of these packets are left blank.
+     */
     struct network_packet sSinglePacket;
     memset(&sSinglePacket,0x00,sizeof(struct network_packet));
     populate_packet(&sSinglePacket, context);
@@ -161,7 +174,10 @@ int main()
         memcpy(&psPacketBuffer[i], &sSinglePacket, sizeof(struct network_packet));
     }
 
-    /* 10. Register the user memory so it can be accessed by the HW directly */
+    /* 10. Register the user memory so it can be accessed by the NIC directly. The NIC will DMA raw packets data between
+     * to and from this memory region. There can be multiple memory regions assigned to a pd. This allows packets being
+     * sent and those being received to be seperated from each other. 
+     */
     struct ibv_mr *mr;
     mr = ibv_reg_mr(pd, psPacketBuffer, u64PacketBufferSize, IBV_ACCESS_LOCAL_WRITE);
     if (!mr)
@@ -172,10 +188,11 @@ int main()
 
     /* 11. Configure all data structures that will be communicate information to the NIC
      *  There are two main structures used here. A work request(WR) and a scatter gather entry(SGE).
-     *  a) An SGE describes the location and size of data to send. In our instance an SGE points to a single packet
-     *  b) For sending, a WR is posted to the NIC and describes the transaction to be performed in the NIC. For this
+     *  a) An SGE describes the location and size of data to send. In our instance an SGE points to a single packet in a 
+     *  MR
+     *  b) For sending, a WR is posted to the NIC QP and describes the transaction to be performed in the NIC. For this
      *  simple case a WR tells the NIC that a "send" operation takes place and provides a pointer to the SGE which 
-     *  points to the data to be sent.
+     *  points to the packet to be sent.
      *      i) Multiple WRs can be chained together as a linked list(wr[x].next points to next WR in list). The first 
      *         wr needs to be posted to the QP and the NIC will handle the entire WR list. This further reduces the load
      *         on the CPU. For this example. NUM_WE_PER_POST_SEND WRs are posted to the NIC at once. We have SQ_NUM_DESC WRs
@@ -225,9 +242,9 @@ int main()
      *  
      * Only a limited number of WRs can queued on the NIC at any one time (see the ".max_send_wr = SQ_NUM_DESC" line 
      * in the ibv_qp_init_attr struct". In order to track this, ibverbs defines a Work Completion(WC). This is a struct
-     * that can be returned by polling the NIC with the ibv_poll_cq command. In this example, I have configured a
-     * completion event to occur at the end of of each WR list by setting the wr send flag in the last element of the 
-     * list. See line: "wr[NUM_WE_PER_POST_SEND-1].send_flags |= IBV_SEND_SIGNALED" above.
+     * that is put on the completion queue by the NIC and can be accesed using the ibv_poll_cq command. In this example, 
+     * I have configured a completion event to occur at the end of of each WR list by setting the wr send flag in the 
+     * last element of the list. See line: "wr[NUM_WE_PER_POST_SEND-1].send_flags |= IBV_SEND_SIGNALED" above.
      * 
      * I count the packets and add this packet index in the first 8 bytes of the UDP payload. The receiver can then use
      * this packet index number to detrmine if the packet have been dropped or received out of order.
@@ -239,9 +256,10 @@ int main()
     struct ibv_wc wc;
     struct ibv_send_wr * bad_wr = NULL;
 
-    //For measuring the data rate
+    
     printf("\nStarting Transmission:\n\n");
 
+    //For measuring time passed between measurement intervals
     struct timeval sTimerStartTime;
     struct timeval sInitialStartTime;
     struct timeval sCurrentTime;
@@ -333,7 +351,7 @@ int main()
 
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context * p_context){
     
-    //Transport Layer(L4)
+    /* 1. Transport Layer(L4) */
     p_network_packet->upd_datagram_src_port = 0; //Keep to zero if no reply expected.
     p_network_packet->upd_datagram_dest_port = htons(UDP_PORT);
     
@@ -353,7 +371,7 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
         + sizeof(p_network_packet->upd_datagram_length);
     
     p_network_packet->upd_datagram_length = htons(u16UDPDatagramLengthBytes);
-    //IP Layer(L3)
+    /* 2. IP Layer(L3) */
 
     //This value is hardcoded - have not bothered to look into it
     p_network_packet->ip_packet_version_and_ihl = 0x45;
@@ -368,48 +386,53 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
             - sizeof(p_network_packet->ethernet_frame_ether_type);
     p_network_packet->ip_packet_total_length = htons(u16IPPacketLengthBytes);
 
-    //If an IP packet is fragmented during transmission, this field contains a unique number identifying the original packet when packets are reassembled.
+    //If an IP packet is fragmented during transmission, this field contains a unique number identifying the original \
+      packet when packets are reassembled.
     p_network_packet->ip_packet_identification = 0;
 
-    //This specifies if a packet can be fragmented and what the offset of the current fragment is. We set a flag to disable fragmentation
+    //This specifies if a packet can be fragmented and what the offset of the current fragment is. We set a flag to \
+      disable fragmentation
     p_network_packet->ip_packet_flags_and_fragment_offset = htons(0x4000);
 
-    //TTL is well explained - google it. Set to eight for now, but that was more a guess. May need to be reworked in the future
+    //TTL is well explained - google it. Set to eight for now, but that was more a guess. May need to be reworked \
+      in the future
     p_network_packet->ip_packet_ttl = 8;
 
-    //17 represents the UDP protocol
+    //Value 17 represents the UDP protocol
     p_network_packet->ip_packet_protocol = 17;
 
     //Set IP addresses
     p_network_packet->ip_packet_dest_address = inet_addr(DESTINATION_IP_ADDRESS);
     p_network_packet->ip_packet_src_address = inet_addr(SOURCE_IP_ADDRESS);
 
-    //Calculating the checksum - break the header into 16 bit chunks. Sum these 16 bit chunks together and then 1 compliment them.
+    /* 2.1 Calculating the checksum - break the header into 16 bit chunks. Sum these 16 bit chunks together and then 
+     * ones compliment them.
+     */
     p_network_packet->ip_packet_checksum = 0; //Must start off as zero for the calculation
     
-    //1. Array of 16 bit chunks
+    //2.1.1 Array of 16 bit chunks
     uint16_t * pu16IPHeader = (uint16_t *) &p_network_packet->ip_packet_version_and_ihl;
 
-    //2.1 16-bit sum of data - we store it as a 32 bit number as the carry values need to be used.
+    //2.1.2.1 16-bit sum of data - we store it as a 32 bit number as the carry values need to be used.
     uint32_t u32Sum = 0;
     for (size_t i = 0; i < 10; i++)
     {
         u32Sum += ntohs(pu16IPHeader[i]);//Remember network byte order
     }
-    //2.2 Compensate for carry - every time a carry occurs, add one to the u32Sum. Can do this at the end as follows:
-    //This has not actually been tested yet
-    //At first glance this could be an if statement, however if adding all the carry bits causes an additional carry, then this step needs to occur again, this is why a while loop is necessary. 
+    //2.1.2.2 Compensate for carry - every time a carry occurs, add one to the u32Sum. Can do this at the end as follows
+    //At first glance this could be an if statement, however if adding all the carry bits causes an additional carry, \
+      then this step needs to occur again, this is why a while loop is necessary. 
     while (u32Sum > 0xffff){
         u32Sum = (u32Sum & 0xffff) + (u32Sum >> 16);
     }
 
-    //3. 1s compliment the data
+    //2.1.3. ones compliment the data
     uint16_t u16SumComplimented = ~(uint16_t)u32Sum;
 
-    //4. Store checksum in packet.
+    //2.1.4. Store checksum in packet.
     p_network_packet->ip_packet_checksum = htons(u16SumComplimented);
 
-    //Ethernet Layer(L2)
+    /* 3. Ethernet Layer(L2) */
     uint8_t pu8DestMacAddress[6] = DESTINATION_MAC_ADDRESS;
     uint8_t pu8SrcMacAddress[6] = SOURCE_MAC_ADDRESS;
     for (size_t i = 0; i < 6; i++)
@@ -432,40 +455,4 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3],(int32_t)p_temp[4],(int32_t)p_temp[5]);
     
     printf("Packet Length excluding frame: %d bytes\n",(int32_t)u16IPPacketLengthBytes);
-    //Ethernet Layer
-    //p_network_packet->ethernet_frame_dest_mac = 
-    //p_network_packet->ethernet_frame_src_mac = 
-
-    // getifaddrs (&ifap);
-    // for (ifa = ifap; ifa; ifa = ifa->ifa_next) {
-    //     if (ifa->ifa_addr && ifa->ifa_addr->sa_family==AF_INET) {
-    //         sa = (struct sockaddr_in *) ifa->ifa_addr;
-    //         addr = inet_ntoa(sa->sin_addr);
-    //         uint8_t addr_octets[4];
-    //         ((uint32_t *) addr_octets)[0] = *(uint32_t*) &sa->sin_addr;
-            
-    //         if(addr_octets[0] == gid.raw[12] && addr_octets[1] == gid.raw[13] && addr_octets[2] == gid.raw[14] && addr_octets[3] == gid.raw[15])
-    //         {
-    //             printf("Interface: %s\tAddress: %s\n", ifa->ifa_name, addr);
-    //             struct sockaddr_ll *ll = (struct sockaddr_ll *) ifa->ifa_addr;
-    //             if (ll->sll_hatype == ARPHRD_ETHER && ll->sll_halen == 6)
-    //             {
-    //                 memcpy(&p_network_packet->ethernet_frame_src_mac, ll->sll_addr, 6);
-    //             }
-    //             break;
-    //         }
-    //     }
-    // }
-
-    // p_network_packet->ip_packet_src_address = inet_addr(addr);
-    // printf("src ip address: %d\n", p_network_packet->ip_packet_src_address);
-    // printf("src mac address: %d:%d:%d:%d:%d:%d\n",
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[0],
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[1],
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[2],
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[3],
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[4],
-    //         (uint32_t)p_network_packet->ethernet_frame_src_mac[5]);
-
-    // freeifaddrs(ifap);
 }
