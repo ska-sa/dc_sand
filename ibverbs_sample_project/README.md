@@ -28,5 +28,6 @@ Requires Mellanox OFED Driver
 Tested on Mellanox ConnectX-5 NIC 
 Need to be sudo
 Easiest to test with tcpdump: sudo tcpdump -i < interface name> -vvvv -X -s 256 port 7708 -c 1
+Hard coded arp -> just run `arp`(on our servers by default) command. If the device does not show up, ping it, or set mac address to appropriate gateway if L3 network
 
 ### Test

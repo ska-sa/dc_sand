@@ -11,6 +11,8 @@
 
 #define PAYLOAD_SIZE_BYTES 4096
 
+
+//Mention why the names dont have type
 struct __attribute__((__packed__)) network_packet {
     uint8_t ethernet_frame_dest_mac[6];
     uint8_t ethernet_frame_src_mac[6];
@@ -87,13 +89,20 @@ struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex, char * strLoca
             {
                 break;
             }
+
             printf("\tPhysical Port: %d\n",*u8PortIndex);
-            printf("\t\tGID: GID Prefix: %d %d %d %d %d %d %d %d\n",(uint32_t)gid.raw[0], (uint32_t)gid.raw[1], (uint32_t)gid.raw[2], (uint32_t)gid.raw[3], (uint32_t)gid.raw[4], (uint32_t)gid.raw[5], (uint32_t)gid.raw[6], (uint32_t)gid.raw[7]);
-            printf("\t\tGID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
-            printf("\t\tIP Address From GID: %d.%d.%d.%d\n",(uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
+            printf("\t\tGID: GID Prefix: %d %d %d %d %d %d %d %d\n",
+                    (uint32_t)gid.raw[0], (uint32_t)gid.raw[1], (uint32_t)gid.raw[2], (uint32_t)gid.raw[3], 
+                    (uint32_t)gid.raw[4], (uint32_t)gid.raw[5], (uint32_t)gid.raw[6], (uint32_t)gid.raw[7]);
+            printf("\t\tGID: Subnet Prefix: %d %d %d %d %d %d %d %d\n", 
+                    (uint32_t)gid.raw[8], (uint32_t)gid.raw[9], (uint32_t)gid.raw[10], (uint32_t)gid.raw[11], 
+                    (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
+            printf("\t\tIP Address From GID: %d.%d.%d.%d\n",
+                    (uint32_t)gid.raw[12], (uint32_t)gid.raw[13], (uint32_t)gid.raw[14] , (uint32_t)gid.raw[15]);
 
             /* 3.2.2 Compare the fields in the GID that correspond to IP address with the expected IP address */
-            if(pu8SourceAddrOctets[0] == gid.raw[12] && pu8SourceAddrOctets[1] == gid.raw[13] && pu8SourceAddrOctets[2] == gid.raw[14] && pu8SourceAddrOctets[3] == gid.raw[15])
+            if(pu8SourceAddrOctets[0] == gid.raw[12] && pu8SourceAddrOctets[1] == gid.raw[13] && 
+                    pu8SourceAddrOctets[2] == gid.raw[14] && pu8SourceAddrOctets[3] == gid.raw[15])
             {
                 u8DeviceFound = 1;
                 break;

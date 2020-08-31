@@ -22,7 +22,7 @@ int main()
     struct ibv_pd *pd;
     uint8_t u8PortNum;
 
-    int ret;
+    int iReturnValue;
 
     /* 1. Get Device */
     ib_dev = get_ibv_device_from_ip(&u8PortNum, LOCAL_INTERFACE_IP_ADDRESS);
@@ -51,7 +51,8 @@ int main()
     struct ibv_cq *cq_recv;
     cq_recv = ibv_create_cq(context, RQ_NUM_DESC, NULL, NULL, 0);
 
-    if (!cq_recv) {
+    if (!cq_recv) 
+    {
         printf("Couldn't create cq_recv\n");
         exit (1);
     }
@@ -76,7 +77,8 @@ int main()
 
     /* 6. Create Queue Pair (QP) - Receive Ring */
     qp = ibv_create_qp(pd, &qp_init_attr);
-    if (!qp) {
+    if (!qp) 
+    {
         printf("Couldn't create RSS QP\n");
         exit(1);
     }
@@ -88,9 +90,10 @@ int main()
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
     qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling concern that if it equals another number things will not work;
-    ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
-    if (ret) {
-        printf("failed modify qp to init %d %d\n",ret, errno);
+    iReturnValue = ibv_modify_qp(qp, &qp_attr, qp_flags);
+    if (iReturnValue) 
+    {
+        printf("failed modify qp to init %d %d\n",iReturnValue, errno);
         exit(1);
     }
     memset(&qp_attr, 0, sizeof(qp_attr));
@@ -98,31 +101,33 @@ int main()
     /* 8. Move ring state to ready to receive, this is needed in order to be able to receive packets */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTR;
-    ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
-    if (ret) {
-        printf("failed modify qp to receive %d %d\n",ret,errno);
+    iReturnValue = ibv_modify_qp(qp, &qp_attr, qp_flags);
+    if (iReturnValue) 
+    {
+        printf("failed modify qp to receive %d %d\n",iReturnValue,errno);
         exit(1);
     }
 
     /* 9. Allocate Memory */
-    int buf_size = ENTRY_SIZE*RQ_NUM_DESC; /* maximum size of data to be accessed by hardware */
-    void *buf;
-    buf = malloc(buf_size);
-    if (!buf) {
+    int iDataBufferSize = ENTRY_SIZE*RQ_NUM_DESC; /* maximum size of data to be accessed by hardware */
+    void *pDataBuffer;
+    pDataBuffer = malloc(iDataBufferSize);
+    if (!pDataBuffer) 
+    {
         printf("Couldn't allocate memory\n");
         exit(1);
     }
 
     /* 10. Register the user memory so it can be accessed by the HW directly */
     struct ibv_mr *mr;
-    mr = ibv_reg_mr(pd, buf, buf_size, IBV_ACCESS_LOCAL_WRITE);
-    if (!mr) {
+    mr = ibv_reg_mr(pd, pDataBuffer, iDataBufferSize, IBV_ACCESS_LOCAL_WRITE);
+    if (!mr) 
+    {
         printf("Couldn't register mr\n");
         exit(1);
     }
 
     /* 11. Attach all buffers to the ring */
-    int n;
     struct ibv_sge sg_entry;
     struct ibv_recv_wr wr, *bad_wr;
 
@@ -140,15 +145,17 @@ int main()
     wr.sg_list = &sg_entry;
     wr.next = NULL;
 
-    for (n = 0; n < RQ_NUM_DESC; n++) {
+    for (int n = 0; n < RQ_NUM_DESC; n++)
+    {
         /* each descriptor points to max MTU size buffer */
-        sg_entry.addr = (uint64_t)buf + ENTRY_SIZE*n;
+        sg_entry.addr = (uint64_t)pDataBuffer + ENTRY_SIZE*n;
         /* index of descriptor returned when packet arrives */
         wr.wr_id = n;
         /* post receive buffer to ring */
-        ret = ibv_post_recv(qp, &wr, &bad_wr);
-        if (ret) {
-            printf("failed to post work request to receive queue %d %d\n",ret,errno);
+        iReturnValue = ibv_post_recv(qp, &wr, &bad_wr);
+        if (iReturnValue) 
+        {
+            printf("failed to post work request to receive queue %d %d\n",iReturnValue,errno);
             exit(1);
         }
     }
@@ -190,7 +197,9 @@ int main()
     flow_rule.udp.val.dst_port = htons(UDP_PORT);
     flow_rule.udp.mask.dst_port = 0xFFFF;
 
-    /* 13. Attach steering rule to qp*/
+    /* 13. Attach steering rule to qp. You can attach multiple flows to the same qp - this allows you 
+     * to, for example, receive data from multiple or in the MeerKAT case, subscribe to multiple multicast streams.
+     */
     struct ibv_flow *eth_flow;
     eth_flow = ibv_create_flow(qp, &flow_rule.attr);
     if (!eth_flow) {
@@ -200,7 +209,7 @@ int main()
     printf("Initialisation Complete - Checking for received packets\n");
 
     /* 14. Wait for CQ event upon message received, and print a message */
-    int msgs_completed;
+    uint64_t u64NumMessagesComplete;
     struct ibv_wc wc;
 
     
@@ -210,7 +219,6 @@ int main()
 
     uint64_t u64PreviousDatagramPayloadPacketIndex=0;
     uint64_t u64CurrentDatagramPayloadPacketIndex=0;
-    uint64_t u64NoPacketDropInterval = 0;
     uint64_t u64NumPacketDrops = 0;
     uint64_t u64NumPacketsReceived = 0;
 
@@ -218,49 +226,53 @@ int main()
     gettimeofday(&sTimerStartTime,NULL);
 
     uint64_t u64StartPostSendCount = 0;
-    uint64_t u64CurrentPostSendCount;
+    uint64_t u64CurrentPostSendCount = 0;
+
+    uint8_t u8FirstPacket = 0;
 
     while(1) 
     {
-        /* wait for completion */
-        msgs_completed = ibv_poll_cq(cq_recv, 1, &wc);
-        if (msgs_completed > 0) {
-            /*
-            * completion includes:
-            * -status of descriptor
-            * -index of descriptor completing
-            * -size of the incoming packets
-            */
-
-            sg_entry.addr = (uint64_t)buf + wc.wr_id*ENTRY_SIZE;
+        /* 14.1 Wait for a completion - this is non-blocking and returns 0 most of the time*/
+        u64NumMessagesComplete = ibv_poll_cq(cq_recv, 1, &wc);
+        if (u64NumMessagesComplete > 0) 
+        {
+            /* The address is stored in the sg entry as it will be placed back on the recv queue - it saves creating
+             * another variable.
+             */
+            sg_entry.addr = (uint64_t)pDataBuffer + wc.wr_id*ENTRY_SIZE;
             struct network_packet * p_network_packet = (struct network_packet *)sg_entry.addr;
+
+            /* 14.2 Get the first 8 bytes of the UDP datagram payload which contain the packet index as set by the 
+             * transmitter.
+             */
             u64CurrentDatagramPayloadPacketIndex = *(uint64_t*) &p_network_packet->udp_datagram_payload;
             u64NumPacketsReceived++;
 
-            if(u64PreviousDatagramPayloadPacketIndex == 0)
+            /*
+             * 14.3 Check that we are not missing a packet. Note, the first packet to be received will always be
+             * counted as a dropped packet so I have explicitly excluded this in the missing packet calculation  
+             */
+            uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;   
+            if(u64PacketIndexDiff != 1)
             {
-                u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex -1;
-            }
-            else
-            {
-                uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;
-                //printf("message %ld received size %d\n", wc.wr_id, wc.byte_len);    
-                if(u64PacketIndexDiff != 1)
+                if(u8FirstPacket != 0)
                 {
                     u64NumPacketDrops += u64PacketIndexDiff - 1;
-                    u64NoPacketDropInterval = 0;
                 }
-                u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex;
+                else
+                {
+                    u8FirstPacket = 1;
+                }
+                
             }
+            u64PreviousDatagramPayloadPacketIndex = u64CurrentDatagramPayloadPacketIndex;
+
 
             wr.wr_id = wc.wr_id;
             /* after processed need to post back buffer */
             ibv_post_recv(qp, &wr, &bad_wr);
-            u64NoPacketDropInterval++;
-            
-            //gettimeofday(&sCurrentTime,NULL);
         } 
-        else if (msgs_completed < 0) 
+        else if (u64NumMessagesComplete < 0) 
         {
             printf("Polling error\n");
             exit(1);
@@ -296,7 +308,7 @@ int main()
 
     ibv_destroy_flow(eth_flow);
     ibv_dereg_mr(mr);
-    free(buf);
+    free(pDataBuffer);
     ibv_destroy_qp(qp);
     ibv_destroy_cq(cq_recv);
     ibv_dealloc_pd(pd);
