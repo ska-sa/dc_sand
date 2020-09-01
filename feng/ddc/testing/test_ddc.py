@@ -8,7 +8,8 @@ def DDC_fixture():
     """Create DDC test object for pytest."""
     decimation_factor = 1
     filter_coeffs = []
-    return ddc.DigitalDownConverter(decimation_factor=decimation_factor, filter_coeffs=filter_coeffs)
+    fs = 1712e6
+    return ddc.DigitalDownConverter(decimation_factor=decimation_factor, filter_coeffs=filter_coeffs, fs=fs)
 
 
 def test_run_ddc_center_cw(DDC_fixture):
