@@ -80,7 +80,7 @@ int main()
         exit (1);
     }
 
-    /* 5. Initialize queue pair structs - The NIC has two work queues. One for sending data and one for receiving.
+    /* 5.1 Initialize queue pair structs - The NIC has two work queues. One for sending data and one for receiving.
      * These queues are grouped togther in what is known as a queue pair(QP). The CPU posts work requests(WRs) to these 
      * queues to tell the NIC how to send and receive data. The CPU receives work completions(WQ) from these work queues
      * telling it that data has been sent or received. 
@@ -106,7 +106,7 @@ int main()
         .qp_type = IBV_QPT_RAW_PACKET, 
     };
 
-    /* 6. Create Queue Pair (QP)*/
+    /* 5.2 Create Queue Pair (QP)*/
     qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp)
     {
@@ -114,14 +114,14 @@ int main()
         exit(1);
     }
 
-    /* 7. Initialize the QP (receive ring) and assign the correct physical port */
+    /* 5.3 Initialize the QP and assign the correct physical port */
     struct ibv_qp_attr qp_attr;
     int qp_flags;
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling \
-    concern that if it equals another number things will not work;
+    qp_attr.port_num = u8PortNum; /* I have never had this value equal to anything other than 1, I have a niggling
+    concern that if it equals another number things will not work;*/
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (ret < 0)
     {
@@ -130,8 +130,9 @@ int main()
     }
     memset(&qp_attr, 0, sizeof(qp_attr));
 
-    /* 8. Move this ring to a "ready" state. Both the ready to send and receive states need to be entered. */
-    /* 8.1. Move ring state to ready to receive */
+    /* 6. Move this ring to a "ready" state. Both the ready to send and receive states need to be entered. */
+    
+    /* 6.1. Move ring state to ready to receive. TODO: Check if RTR state needs to be entered. */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTR;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
@@ -141,7 +142,7 @@ int main()
         exit(1);
     }
 
-    /* 8.2. Move ring state to ready to send */
+    /* 6.2. Move ring state to ready to send */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTS;
     ret = ibv_modify_qp(qp, &qp_attr, qp_flags);
@@ -151,11 +152,11 @@ int main()
         exit(1);
     }
 
-    /* 9. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will
+    /* 7. Allocate and populate memory - this is user space memory that will be read by the NIC. This memory will
      * contain payload data as well as ethernet frame/ip packet/udp datagram headers.
      */
 
-    /* 9.1 Allocate a space in memory to accomodate SQ_NUM_DESC packets. */
+    /* 7.1 Allocate a space in memory to accomodate SQ_NUM_DESC packets. */
     uint64_t u64PacketBufferSize = sizeof(struct network_packet)*SQ_NUM_DESC;
     struct network_packet *psPacketBuffer = malloc(u64PacketBufferSize);
     if (!psPacketBuffer)
@@ -164,7 +165,7 @@ int main()
         exit(1);   
     }
 
-    /* 9.2 Populate the network headers of each packet in the buffer - The data fields of these packets are left blank.
+    /* 7.2 Populate the network headers of each packet in the buffer - The data fields of these packets are left blank.
      */
     struct network_packet sSinglePacket;
     memset(&sSinglePacket,0x00,sizeof(struct network_packet));
@@ -174,7 +175,7 @@ int main()
         memcpy(&psPacketBuffer[i], &sSinglePacket, sizeof(struct network_packet));
     }
 
-    /* 10. Register the user memory so it can be accessed by the NIC directly. The NIC will DMA raw packets data between
+    /* 8. Register the user memory so it can be accessed by the NIC directly. The NIC will DMA raw packets data
      * to and from this memory region. There can be multiple memory regions assigned to a pd. This allows packets being
      * sent and those being received to be seperated from each other. 
      */
@@ -186,7 +187,7 @@ int main()
         exit(1);
     }
 
-    /* 11. Configure all data structures that will be communicate information to the NIC
+    /* 9. Configure all data structures that will be communicate information to the NIC
      *  There are two main structures used here. A work request(WR) and a scatter gather entry(SGE).
      *  a) An SGE describes the location and size of data to send. In our instance an SGE points to a single packet in a 
      *  MR
@@ -195,23 +196,23 @@ int main()
      *  points to the packet to be sent.
      *      i) Multiple WRs can be chained together as a linked list(wr[x].next points to next WR in list). The first 
      *         wr needs to be posted to the QP and the NIC will handle the entire WR list. This further reduces the load
-     *         on the CPU. For this example. NUM_WE_PER_POST_SEND WRs are posted to the NIC at once. We have SQ_NUM_DESC WRs
-     *         as we can have that many in the send queue at any one time - each needs to be unique so we can point to a 
-     *         unique SGE 
+     *         on the CPU. For this example. NUM_WE_PER_POST_SEND WRs are posted to the NIC at once. We have SQ_NUM_DESC 
+     *         WRs as we can have that many in the send queue at any one time - each needs to be unique so we can point 
+     *         to a  unique SGE 
      *      ii) A WR can point to multiple SGEs. This behaviour is not made very obvious in the documentation. I think 
-     *         all the different SGEs will be combined into a single packet, but it could be transmitted as multiple
-     *         packets. If this were the case, you could have the header info in a single SGE and the payload in a 
-     *         different SGE which could be useful. It may be that this is not even supported for raw ethernet packet
-     *         mode. Someone should test this out. All the examples I have seen have a single SGE per WR.
+     *         all the different SGEs will be combined into a single packet. If this were the case, you could have the 
+     *         header info in a single SGE and the payload in a different SGE which could be useful. It may be that this
+     *         is not even supported for raw ethernet packet mode. Someone should test this out. All the examples I have
+     *         seen have a single SGE per WR.
      */
     
     
-    /* 11.1 Initialise all required structs */
+    /* 9.1 Initialise all required structs */
     struct ibv_sge sg_entry[SQ_NUM_DESC];
     struct ibv_send_wr wr[SQ_NUM_DESC];
     memset(wr, 0, sizeof(wr[0])*SQ_NUM_DESC);
 
-    /* 11.2 Link SGEs to WRs and link WRs together in a linked list */
+    /* 9.2 Link SGEs to WRs and link WRs together in a linked list */
     for (size_t i = 0; i < SQ_NUM_DESC; i++)
     {
         //Point the scatter gather entry to the correct packet
@@ -226,6 +227,7 @@ int main()
         wr[i].send_flags = 0;
     }
 
+    //This iterates through each linked list of WRs.
     for (size_t i = NUM_WE_PER_POST_SEND; i <= SQ_NUM_DESC; i+=NUM_WE_PER_POST_SEND)
     {
         wr[i-1].next = NULL; //Last WR in list must not point to any further WRs.
@@ -236,7 +238,7 @@ int main()
         wr[i-1].send_flags |= IBV_SEND_SIGNALED;
     }  
 
-    /* 12. Send Operation 
+    /* 10. Send Operation 
      * The send operation is very lightweight and simple. It requires calling ibv_post_send(). This function will tell
      * then NIC to transmit all packets in the completion list.
      *  
@@ -282,15 +284,16 @@ int main()
          * I am leaving it here as a reminder to investigate further. */
         //wr.send_flags = IBV_SEND_INLINE;
     
-        /* 12.1 Track which set of WRs is being transmitted next and update the count on these packets */
+        /* 10.1 Track which set of WRs is being transmitted next and update the count on these packets */
         for (size_t i = 0; i < NUM_WE_PER_POST_SEND; i++)
         {
-            *(uint64_t*) &psPacketBuffer[u64NextWRPostSendIndex * NUM_WE_PER_POST_SEND + i].udp_datagram_payload = u64PacketIndex;
+            *(uint64_t*) &psPacketBuffer[u64NextWRPostSendIndex * NUM_WE_PER_POST_SEND + i].udp_datagram_payload 
+                    = u64PacketIndex;
             u64PacketIndex++;
         }
         u64NextWRPostSendIndex = (u64NextWRPostSendIndex + 1) % (SQ_NUM_DESC / NUM_WE_PER_POST_SEND);
 
-        /* 12.2 Push WRs to hardware */
+        /* 10.2 Push WRs to hardware */
         ret = ibv_post_send(qp, &wr[u64NextWRPostSendIndex*NUM_WE_PER_POST_SEND], &bad_wr);
         if (ret != 0 /*|| bad_wr != NULL*/) 
         {
@@ -299,7 +302,7 @@ int main()
         }
         u64NumPostedTotal++;
         
-        /* 12.3 poll for completion after half ring is posted */
+        /* 10.3 poll for completion after half ring is posted */
         if (u64NumPostedTotal - u64NumCompletedTotal > 0)
         {
             iNumCompletedByWR = 0;
@@ -313,7 +316,8 @@ int main()
                 if (iNumCompletedByWR > 0) 
                 {   
                     //Here for debug purposes, empty otherwise
-                    //printf("%d %ld %d %ld %d\n",iNumCompletedByWR,wc.wr_id,wc.opcode,wc.status, u64NumPostedTotal - u64NumCompletedTotal);
+                    //printf("%d %ld %d %ld %d\n",
+                    //iNumCompletedByWR,wc.wr_id,wc.opcode,wc.status, u64NumPostedTotal - u64NumCompletedTotal);
                 }
                 else if (iNumCompletedByWR < 0) 
                 {
@@ -323,19 +327,22 @@ int main()
             }while(u64NumPostedTotal - u64NumCompletedTotal >= SQ_NUM_DESC/NUM_WE_PER_POST_SEND);
         }
 
-        //Measure time and if a second has passed print the data rate to screen.
+        /* Measure time and if a second has passed print the data rate to screen. */
         gettimeofday(&sCurrentTime,NULL);
         double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
         if(dTimeDifference > 2){
             //Calculate data rate
             u64CurrentPostSendCount = u64NumCompletedTotal;
-            double dDataTransferred_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000 * 8;
+            double dDataTransferred_Gb = (u64CurrentPostSendCount - u64StartPostSendCount)
+                    * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000 * 8;
             double dDataRate_Gbps = dDataTransferred_Gb/dTimeDifference;
-            double dTotalDataTransferred_GB = u64NumCompletedTotal * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000;
+            double dTotalDataTransferred_GB = u64NumCompletedTotal 
+                    * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
-            printf("\rRunning Time: %.2fs. Total Transmitted %.3f GB. Current Data Rate: %.3f Gbps",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps);
+            printf("\rRunning Time: %.2fs. Total Transmitted %.3f GB. Current Data Rate: %.3f Gbps"
+                    ,dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps);
             fflush(stdout);
 
             //Set timer up for next second
@@ -352,7 +359,7 @@ int main()
 void populate_packet(struct network_packet * p_network_packet, struct ibv_context * p_context){
     
     /* 1. Transport Layer(L4) */
-    p_network_packet->upd_datagram_src_port = 0; //Keep to zero if no reply expected.
+    p_network_packet->upd_datagram_src_port = 0; //Keep to zero as no reply expected.
     p_network_packet->upd_datagram_dest_port = htons(UDP_PORT);
     
     /* The UDP checksum has been set to zero as it is quite expensive to calculate and is not checked by any of
@@ -363,7 +370,7 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
      */
     p_network_packet->upd_datagram_checksum = 0; 
 
-    //The length of UDP datagram includes UDP header and payload
+    /* The length of UDP datagram includes UDP header and payload */
     uint16_t u16UDPDatagramLengthBytes= PAYLOAD_SIZE_BYTES
         + sizeof(p_network_packet->upd_datagram_src_port)
         + sizeof(p_network_packet->upd_datagram_dest_port)
@@ -373,35 +380,36 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     p_network_packet->upd_datagram_length = htons(u16UDPDatagramLengthBytes);
     /* 2. IP Layer(L3) */
 
-    //This value is hardcoded - have not bothered to look into it
+    /* This value is hardcoded - have not bothered to look into it */
     p_network_packet->ip_packet_version_and_ihl = 0x45;
     
-    //These values allow for differentiating type of service and congestion level - I think this is not used in the MeerKAT network, so it is just left at 0
+    /* These values allow for differentiating type of service and congestion level - I think this is not used in the
+       MeerKAT network, so it is just left at 0. */
     p_network_packet->ip_packet_dscp_and_ecn = 0x0;
 
-    //This is the packet length - it includes the IP header and data while excluding the ethernet frame fields.
+    /* This is the packet length - it includes the IP header and data while excluding the ethernet frame fields. */
     uint16_t u16IPPacketLengthBytes = sizeof(*p_network_packet) 
             - sizeof(p_network_packet->ethernet_frame_dest_mac) 
             - sizeof(p_network_packet->ethernet_frame_src_mac)
             - sizeof(p_network_packet->ethernet_frame_ether_type);
     p_network_packet->ip_packet_total_length = htons(u16IPPacketLengthBytes);
 
-    //If an IP packet is fragmented during transmission, this field contains a unique number identifying the original \
-      packet when packets are reassembled.
+    /* If an IP packet is fragmented during transmission, this field contains a unique number identifying the original
+      packet when packets are reassembled */
     p_network_packet->ip_packet_identification = 0;
 
-    //This specifies if a packet can be fragmented and what the offset of the current fragment is. We set a flag to \
-      disable fragmentation
+    /* This specifies if a packet can be fragmented and what the offset of the current fragment is. We set a flag to
+      disable fragmentation */
     p_network_packet->ip_packet_flags_and_fragment_offset = htons(0x4000);
 
-    //TTL is well explained - google it. Set to eight for now, but that was more a guess. May need to be reworked \
-      in the future
+    /* TTL is well explained - google it. Set to eight for now, but that was more a guess. May need to be reworked
+      in the future */
     p_network_packet->ip_packet_ttl = 8;
 
-    //Value 17 represents the UDP protocol
+    /* Value 17 represents the UDP protocol */
     p_network_packet->ip_packet_protocol = 17;
 
-    //Set IP addresses
+    /* Set IP addresses */
     p_network_packet->ip_packet_dest_address = inet_addr(DESTINATION_IP_ADDRESS);
     p_network_packet->ip_packet_src_address = inet_addr(SOURCE_IP_ADDRESS);
 
@@ -410,26 +418,28 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
      */
     p_network_packet->ip_packet_checksum = 0; //Must start off as zero for the calculation
     
-    //2.1.1 Array of 16 bit chunks
+    /* 2.1.1 Array of 16 bit chunks */
     uint16_t * pu16IPHeader = (uint16_t *) &p_network_packet->ip_packet_version_and_ihl;
 
-    //2.1.2.1 16-bit sum of data - we store it as a 32 bit number as the carry values need to be used.
+    /* 2.1.2.1 16-bit sum of data - we store it as a 32 bit number as the carry values need to be used. */
     uint32_t u32Sum = 0;
     for (size_t i = 0; i < 10; i++)
     {
         u32Sum += ntohs(pu16IPHeader[i]);//Remember network byte order
     }
-    //2.1.2.2 Compensate for carry - every time a carry occurs, add one to the u32Sum. Can do this at the end as follows
-    //At first glance this could be an if statement, however if adding all the carry bits causes an additional carry, \
-      then this step needs to occur again, this is why a while loop is necessary. 
+    /* 2.1.2.2 Compensate for carry - every time a carry occurs, add one to the u32Sum. Can do this at the end as 
+     * follows: */
+    
+    /* At first glance this could be an if statement, however if adding all the carry bits causes an additional carry,
+       then this step needs to occur again, this is why a while loop is necessary. */ 
     while (u32Sum > 0xffff){
         u32Sum = (u32Sum & 0xffff) + (u32Sum >> 16);
     }
 
-    //2.1.3. ones compliment the data
+    /* 2.1.3. ones compliment the data */
     uint16_t u16SumComplimented = ~(uint16_t)u32Sum;
 
-    //2.1.4. Store checksum in packet.
+    /* 2.1.4. Store checksum in packet. */
     p_network_packet->ip_packet_checksum = htons(u16SumComplimented);
 
     /* 3. Ethernet Layer(L2) */
@@ -443,16 +453,21 @@ void populate_packet(struct network_packet * p_network_packet, struct ibv_contex
     p_network_packet->ethernet_frame_ether_type = htons(0x0800);
     
     uint8_t * p_temp = (uint8_t*) & p_network_packet->ip_packet_src_address;
-    printf("Source IP: %d.%d.%d.%d\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3]);
+    printf("Source IP: %d.%d.%d.%d\n", (int32_t)p_temp[0], (int32_t)p_temp[1], (int32_t)p_temp[2], (int32_t)p_temp[3]);
 
     p_temp = (uint8_t*) & p_network_packet->ip_packet_dest_address;
-    printf("Destination IP: %d.%d.%d.%d\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3]);
+    printf("Destination IP: %d.%d.%d.%d\n", 
+            (int32_t)p_temp[0], (int32_t)p_temp[1], (int32_t)p_temp[2], (int32_t)p_temp[3]);
     
     p_temp = (uint8_t*) & p_network_packet->ethernet_frame_dest_mac;
-    printf("Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3],(int32_t)p_temp[4],(int32_t)p_temp[5]);
+    printf("Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+            (int32_t)p_temp[0], (int32_t)p_temp[1], (int32_t)p_temp[2],
+            (int32_t)p_temp[3], (int32_t)p_temp[4], (int32_t)p_temp[5]);
     
     p_temp = (uint8_t*) & p_network_packet->ethernet_frame_src_mac;
-    printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",(int32_t)p_temp[0],(int32_t)p_temp[1],(int32_t)p_temp[2],(int32_t)p_temp[3],(int32_t)p_temp[4],(int32_t)p_temp[5]);
+    printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+            (int32_t)p_temp[0], (int32_t)p_temp[1], (int32_t)p_temp[2],
+            (int32_t)p_temp[3], (int32_t)p_temp[4], (int32_t)p_temp[5]);
     
     printf("Packet Length excluding frame: %d bytes\n",(int32_t)u16IPPacketLengthBytes);
 }

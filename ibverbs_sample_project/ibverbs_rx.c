@@ -11,8 +11,8 @@
 
 #define RQ_NUM_DESC 2048
 #define ENTRY_SIZE 9000 /* The maximum size of each received packet - set to jumbo frame */
-#define LOCAL_INTERFACE_IP_ADDRESS "10.100.18.9"
-#define REMOTE_INTERFACE_IP_ADDRESS "10.100.18.7"
+#define SOURCE_IP_ADDRESS "10.100.18.9"
+#define DESTINATION_IP_ADDRESS "10.100.18.7"
 #define UDP_PORT 7708
 
 int main()
@@ -24,30 +24,32 @@ int main()
 
     int iReturnValue;
 
-    /* 1. Get Device */
-    ib_dev = get_ibv_device_from_ip(&u8PortNum, LOCAL_INTERFACE_IP_ADDRESS);
+    /* 1. Get correct device and physical port number from source IP address specified by SOURCE_IP_ADDRESS. */
+    ib_dev = get_ibv_device_from_ip(&u8PortNum, SOURCE_IP_ADDRESS);
     if(ib_dev == NULL){
         printf("No NIC with matching SOURCE_IP_ADDRESS found\n");
         exit(1);
     }
 
-    /* 2. Get the device context */
-    /* Get context to device. The context is a descriptor and needed for resource tracking and operations */
+    /* 2. Get the device context. Same as in ibverbs_tx.c. */
     context = ibv_open_device(ib_dev);
     if (!context) {
         printf("Couldn't get context for %s\n",ibv_get_device_name(ib_dev));
         exit(1);
     }
 
-    /* 3. Allocate Protection Domain */
-    /* Allocate a protection domain to group memory regions (MR) and rings */
+    /* 3. Allocate Protection Domain. Same as in ibverbs_tx.c
+     */
     pd = ibv_alloc_pd(context);
     if (!pd) {
         printf("Couldn't allocate PD\n");
         exit(1);
     }
 
-    /* 4. Create Complition Queue (CQ) */
+    /* 4. Create Completion Queue (CQ). Similar to the one in ibverbs_tx.c. The ibverbs_tx.c CQ receives a completion
+     * upon succesful transmission of a packet. This CQ receives a completion once a packet has been received and copied
+     * into the specified MR buffer.
+     */
     struct ibv_cq *cq_recv;
     cq_recv = ibv_create_cq(context, RQ_NUM_DESC, NULL, NULL, 0);
 
@@ -57,7 +59,8 @@ int main()
         exit (1);
     }
 
-    /* 5. Initialize QP */
+    /* 5.1 Initialize queue pair structs. Similar to the one in ibverbs_tx.c.
+     */ 
     struct ibv_qp *qp;
     struct ibv_qp_init_attr qp_init_attr = {
         .qp_context = NULL,
@@ -75,7 +78,7 @@ int main()
         .qp_type = IBV_QPT_RAW_PACKET,
     };
 
-    /* 6. Create Queue Pair (QP) - Receive Ring */
+    /* 5.2 Create Queue Pair (QP). Similar to the one in ibverbs_tx.c.*/
     qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp) 
     {
@@ -83,13 +86,14 @@ int main()
         exit(1);
     }
 
-    /* 7. Initialize the QP (receive ring) and assign a port */
+    /* 5.3 Initialize the QP and assign the correct physical port. Similar to the one in ibverbs_tx.c. */
     struct ibv_qp_attr qp_attr;
     int qp_flags;
     memset(&qp_attr, 0, sizeof(qp_attr));
     qp_flags = IBV_QP_STATE | IBV_QP_PORT;
     qp_attr.qp_state = IBV_QPS_INIT;
-    qp_attr.port_num = u8PortNum; //I have never had this value equal to anything other than 1, I have a niggling concern that if it equals another number things will not work;
+    qp_attr.port_num = u8PortNum; /*I have never had this value equal to anything other than 1, I have a niggling \
+    concern that if it equals another number things will not work;*/
     iReturnValue = ibv_modify_qp(qp, &qp_attr, qp_flags);
     if (iReturnValue) 
     {
@@ -98,7 +102,8 @@ int main()
     }
     memset(&qp_attr, 0, sizeof(qp_attr));
 
-    /* 8. Move ring state to ready to receive, this is needed in order to be able to receive packets */
+    /* 6. Move this ring to a "ready" state. Only the ready to receive state need to be entered. */
+    /* 6.1. Move ring state to ready to receive */
     qp_flags = IBV_QP_STATE;
     qp_attr.qp_state = IBV_QPS_RTR;
     iReturnValue = ibv_modify_qp(qp, &qp_attr, qp_flags);
@@ -108,7 +113,7 @@ int main()
         exit(1);
     }
 
-    /* 9. Allocate Memory */
+    /* 7. Allocate memory buffer - This is user space memory that will have packets written to it by the NIC */
     int iDataBufferSize = ENTRY_SIZE*RQ_NUM_DESC; /* maximum size of data to be accessed by hardware */
     void *pDataBuffer;
     pDataBuffer = malloc(iDataBufferSize);
@@ -118,7 +123,8 @@ int main()
         exit(1);
     }
 
-    /* 10. Register the user memory so it can be accessed by the HW directly */
+    /* 8. Register the user memory so it can be accessed by the NIC directly. Similar to the one in ibverbs_tx.c.
+     */
     struct ibv_mr *mr;
     mr = ibv_reg_mr(pd, pDataBuffer, iDataBufferSize, IBV_ACCESS_LOCAL_WRITE);
     if (!mr) 
@@ -127,7 +133,7 @@ int main()
         exit(1);
     }
 
-    /* 11. Attach all buffers to the ring */
+    /* 11. Attach all buffers to the ring - When the NIC */
     struct ibv_sge sg_entry;
     struct ibv_recv_wr wr, *bad_wr;
 
@@ -186,9 +192,9 @@ int main()
     //Set L3 IP Layer flow rules
     flow_rule.ip.type = IBV_FLOW_SPEC_IPV4;
     flow_rule.ip.size = sizeof(flow_rule.ip);
-    flow_rule.ip.val.dst_ip = inet_addr(LOCAL_INTERFACE_IP_ADDRESS);
+    flow_rule.ip.val.dst_ip = inet_addr(SOURCE_IP_ADDRESS);
     flow_rule.ip.mask.dst_ip = 0xFFFFFFFF;
-    flow_rule.ip.val.src_ip = inet_addr(REMOTE_INTERFACE_IP_ADDRESS);
+    flow_rule.ip.val.src_ip = inet_addr(DESTINATION_IP_ADDRESS);
     flow_rule.ip.mask.src_ip = 0xFFFFFFFF;
 
     //Set L4 IP Layer flow rules
@@ -292,12 +298,15 @@ int main()
                         - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
 
             u64CurrentPostSendCount = u64NumPacketsReceived;
-            double dDataReceived_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) * sizeof(struct network_packet)/1000000000 * 8;
+            double dDataReceived_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) 
+                    * sizeof(struct network_packet)/1000000000 * 8;
             double dDataRate_Gbps = dDataReceived_Gb/dTimeDifference;
             double dTotalDataTransferred_GB = u64NumPacketsReceived * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
-            printf("\rRunning Time: %.2fs. Total Received %.3f GB. Current Data Rate: %.3f Gbps, Packets: received/dropped %ld/%ld",dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
+            printf("\rRunning Time: %.2fs. Total Received %.3f GB.\
+                    Current Data Rate: %.3f Gbps, Packets: received/dropped %ld/%ld",
+                    dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);
             fflush(stdout);
 
             //Set timer up for next timing interval.
