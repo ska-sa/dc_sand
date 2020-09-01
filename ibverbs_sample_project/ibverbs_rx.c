@@ -1,6 +1,25 @@
-#include <infiniband/arch.h>
+/**
+ * @file    ibverbs_rx.c
+ *
+ * @brief   Sample program that demonstrates how to receive raw UDP ethernet network data at high data rates using the 
+ *          ibverbs library.
+ * 
+ * This program uses the ibverbs API to receive raw UDP ethernet data from a Mellanox NIC. This implementation both 
+ * bypasses the kernel and is CPU light. Once received, a packet is DMAd directly from the NIC to a userpace buffer 
+ * without CPU intervention. With this approach, very high receive speeds can be achieved (speeds >90 Gbps have been 
+ * observed). 
+ * 
+ * The ibverbs library requires steering rules to be defined to determine which packets the NIC must intercept in this 
+ * manner and which must be passed on to the kernel. This program demonstrates how to do this.
+ * 
+ * When examining this example, the ibverbs_tx.c file should be read before the ibverbs_rx.c file as it was created
+ * first and explains some of the concepts in more detail.
+ * 
+ * @author  Gareth Callanan
+ *          South African Radio Astronomy Observatory(SARAO)
+ */
+
 #include <infiniband/verbs.h>
-#include <infiniband/verbs_exp.h>
 /* Functions in this library are used for converting IP address strings to character arrays and for converting data 
  * between network and host byte order.
  */
@@ -133,19 +152,90 @@ int main()
         exit(1);
     }
 
-    /* 11. Attach all buffers to the ring - When the NIC */
+    /* 9. Register steering rule. A steering rule can be thought of as a filter for the NIC. The steering rule
+     * specifies properties within the ethernet/idp/udp headers that the NIC can filter on. It can filter on part or the
+     * entirety of a field depending on how a bitmask is set. If the NIC receives a packet that matches the steering 
+     * rule, it redirects that packet away from the kernel network stack to a user space buffer associated with a
+     * designated QP instead.  
+     * 
+     * Below, a steering rule has been created that filters packets with a specific source and destination ip address
+     * as well as a specific destination port number.
+     */
+    
+    /*
+     * 9.1 The first step is creating a flow rule struct. This struct consists of multiple ibv structs that define the 
+     * various headers that will be used to create a steering rule. In this case, the IP header(for IP addresses) and
+     * UDP header(for port numbers) are going to be filtered on and thus the corresponding ibv_flow "sub-structs" are
+     * part of the flow_rule struct.
+     */
+    struct
+    {
+        struct ibv_flow_attr attr;
+        struct ibv_flow_spec_eth eth __attribute__((packed));/* At one stage the flow rule would not work without this 
+        struct, I am not sure if this has been fixed, but I have left it here for safety even though it is not strictly
+        required */
+        struct ibv_flow_spec_ipv4 ip __attribute__((packed));
+        struct ibv_flow_spec_tcp_udp udp __attribute__((packed));
+    } __attribute__((packed)) flow_rule;
+    memset(&flow_rule, 0, sizeof(flow_rule));
+
+    // 9.1.1 General Rule Set Up
+    flow_rule.attr.type = IBV_FLOW_ATTR_NORMAL;
+    flow_rule.attr.priority = 0;
+    flow_rule.attr.size = sizeof(flow_rule);
+    flow_rule.attr.num_of_specs = 3;
+    flow_rule.attr.port = 1;
+
+    // 9.1.2 Set L2 Layer flow rules
+    flow_rule.eth.type = IBV_FLOW_SPEC_ETH;
+    flow_rule.eth.size = sizeof(flow_rule.eth);
+
+    // 9.1.3 Set L3 IP Layer flow rules. The mask is set to non-zero for fields we want to filter on.
+    flow_rule.ip.type = IBV_FLOW_SPEC_IPV4;
+    flow_rule.ip.size = sizeof(flow_rule.ip);
+    flow_rule.ip.val.dst_ip = inet_addr(SOURCE_IP_ADDRESS);
+    flow_rule.ip.mask.dst_ip = 0xFFFFFFFF;
+    flow_rule.ip.val.src_ip = inet_addr(DESTINATION_IP_ADDRESS);
+    flow_rule.ip.mask.src_ip = 0xFFFFFFFF;
+
+    // 9.1.4 Set L4 IP Layer flow rules
+    flow_rule.udp.type = IBV_FLOW_SPEC_UDP;
+    flow_rule.udp.size = sizeof(flow_rule.udp);
+    flow_rule.udp.val.dst_port = htons(UDP_PORT);
+    flow_rule.udp.mask.dst_port = 0xFFFF;
+
+    /* 9.2. Attach steering rule to qp. You can attach multiple flows to the same qp - this allows you 
+     * to, for example, receive data from multiple IP addresses or in the MeerKAT case, subscribe to multiple multicast 
+     * streams.
+     */
+    struct ibv_flow *eth_flow;
+    eth_flow = ibv_create_flow(qp, &flow_rule.attr);
+    if (!eth_flow) {
+        printf("Couldn't attach steering flow\n");
+        exit(1);
+    }
+    printf("Initialisation Complete - Checking for received packets\n");
+
+    /* 10. Add WRs to the QP - When the NIC receives a packet, it does not automatically know where to put the packets.
+     * The CPU needs to give this information to the NIC. This is done by posting Work Requests(WRs) to the NIC. The WR
+     * is a struct that specifies what the NIC must do with received data. The WR in turn points to a Scatter Gather 
+     * Entry(SGE) struct. This SGE struct gives a pointer to the NIC specifying where in memory a received packet must 
+     * be placed. The WR is put on the Receive Queue(RQ) portion of the QP. A single WR is consumed per received packet,
+     * as such, the RQ must be periodically receiving new WRs from the CPU. Initially we fill up the RQ. Later on in the
+     * code, the new WRs will be posted once a WC is received.
+     * 
+     * In ibverbs_tx.c, multiple WRs are linked together and posted at once. This has not been done here. This does not
+     * mean it cant be done.
+     * 
+     * TODO: In ibverbs_tx.c, the WR opcode is specified(wr.opcode = IBV_WR_SEND). This has not been done here. I am not
+     * sure if specifying this opcode does anything.
+     */
     struct ibv_sge sg_entry;
     struct ibv_recv_wr wr, *bad_wr;
 
     /* pointer to packet buffer size and memory key of each packet buffer */
     sg_entry.length = ENTRY_SIZE;
     sg_entry.lkey = mr->lkey;
-
-    /*
-     * descriptor for receive transaction - details:
-     * - how many pointers to receive buffers to use
-     * - if this is a single descriptor or a list (next == NULL single)
-     */
 
     wr.num_sge = 1;
     wr.sg_list = &sg_entry;
@@ -157,7 +247,7 @@ int main()
         sg_entry.addr = (uint64_t)pDataBuffer + ENTRY_SIZE*n;
         /* index of descriptor returned when packet arrives */
         wr.wr_id = n;
-        /* post receive buffer to ring */
+        /* post WR to ring */
         iReturnValue = ibv_post_recv(qp, &wr, &bad_wr);
         if (iReturnValue) 
         {
@@ -166,55 +256,7 @@ int main()
         }
     }
 
-    /* 12. Register steering rule to intercept packet to DEST_MAC and place packet in ring pointed by ->qp */
-    
-    //Why do I declare the stuct here? Because thats how everyone does it in the docs.
-    struct
-    {
-        struct ibv_flow_attr attr;
-        struct ibv_flow_spec_eth eth __attribute__((packed));
-        struct ibv_flow_spec_ipv4 ip __attribute__((packed));
-        struct ibv_flow_spec_tcp_udp udp __attribute__((packed));
-    } __attribute__((packed)) flow_rule;
-    memset(&flow_rule, 0, sizeof(flow_rule));
-
-    //General Rule Set Up (IBV_FLOW_ATTR_SNIFFER)
-    flow_rule.attr.type = IBV_FLOW_ATTR_NORMAL;
-    flow_rule.attr.priority = 0;
-    flow_rule.attr.size = sizeof(flow_rule);
-    flow_rule.attr.num_of_specs = 3;
-    flow_rule.attr.port = 1;
-
-    //Set L2 Layer flow rules
-    flow_rule.eth.type = IBV_FLOW_SPEC_ETH;
-    flow_rule.eth.size = sizeof(flow_rule.eth);
-
-    //Set L3 IP Layer flow rules
-    flow_rule.ip.type = IBV_FLOW_SPEC_IPV4;
-    flow_rule.ip.size = sizeof(flow_rule.ip);
-    flow_rule.ip.val.dst_ip = inet_addr(SOURCE_IP_ADDRESS);
-    flow_rule.ip.mask.dst_ip = 0xFFFFFFFF;
-    flow_rule.ip.val.src_ip = inet_addr(DESTINATION_IP_ADDRESS);
-    flow_rule.ip.mask.src_ip = 0xFFFFFFFF;
-
-    //Set L4 IP Layer flow rules
-    flow_rule.udp.type = IBV_FLOW_SPEC_UDP;
-    flow_rule.udp.size = sizeof(flow_rule.udp);
-    flow_rule.udp.val.dst_port = htons(UDP_PORT);
-    flow_rule.udp.mask.dst_port = 0xFFFF;
-
-    /* 13. Attach steering rule to qp. You can attach multiple flows to the same qp - this allows you 
-     * to, for example, receive data from multiple or in the MeerKAT case, subscribe to multiple multicast streams.
-     */
-    struct ibv_flow *eth_flow;
-    eth_flow = ibv_create_flow(qp, &flow_rule.attr);
-    if (!eth_flow) {
-        printf("Couldn't attach steering flow\n");
-        exit(1);
-    }
-    printf("Initialisation Complete - Checking for received packets\n");
-
-    /* 14. This section is the actual running part of the program. It runs continously  */
+    /* 11. This section is the actual running part of the program. It runs continuously  */
     uint64_t u64NumMessagesComplete;
     struct ibv_wc wc;
 
@@ -238,7 +280,10 @@ int main()
 
     while(1) 
     {
-        /* 14.1 Wait for a completion - this is non-blocking and returns 0 most of the time*/
+        /* 11.1 Wait for a completion - this is non-blocking and returns 0 most of the time. A completion occurs once a 
+         * packet has been received and copied into a the designated memory region. A Work Completion (WC) is posted to 
+         * the completion queue when this occurs. 
+         */
         u64NumMessagesComplete = ibv_poll_cq(cq_recv, 1, &wc);
         if (u64NumMessagesComplete > 0) 
         {
@@ -248,13 +293,13 @@ int main()
             sg_entry.addr = (uint64_t)pDataBuffer + wc.wr_id*ENTRY_SIZE;
             struct network_packet * p_network_packet = (struct network_packet *)sg_entry.addr;
 
-            /* 14.2 Get the first 8 bytes of the UDP datagram payload which contain the packet index as set by the 
+            /* 11.2 Get the first 8 bytes of the UDP datagram payload which contain the packet index as set by the 
              * transmitter.
              */
             u64CurrentDatagramPayloadPacketIndex = *(uint64_t*) &p_network_packet->udp_datagram_payload;
             u64NumPacketsReceived++;
 
-            /* 14.3 Check that we are not missing a packet. Note, the first packet to be received will always be
+            /* 11.3 Check that we are not missing a packet. Note, the first packet to be received will always be
              * counted as a dropped packet so I have explicitly excluded this in the missing packet calculation  
              */
             uint64_t u64PacketIndexDiff = u64CurrentDatagramPayloadPacketIndex - u64PreviousDatagramPayloadPacketIndex;   
@@ -316,7 +361,7 @@ int main()
 
     }
 
-    //15. This never actually gets called but is left here for completeness.
+    //12. This never actually gets called but is left here for completeness.
     printf("Cleanup\n");
 
     ibv_destroy_flow(eth_flow);

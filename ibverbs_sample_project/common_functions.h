@@ -4,15 +4,26 @@
 #include <stdint.h>
 #include <infiniband/verbs.h>
 
-/* Functions in this library are used for converting IP address strings to character arrays and for converting data 
+/* Functions in the inet.h library are used for converting IP address strings to character arrays and for converting data 
  * between network and host byte order.
  */
 #include <arpa/inet.h> 
 
+/* This is the size of the payload in the UDP datagram. The actual UDP datagram will be bigger than this due to all the 
+ * header information.
+ */
 #define PAYLOAD_SIZE_BYTES 4096
 
 
-//Mention why the names dont have type
+/** 
+ * This struct is meant to represent a UDP datagram including all ethernet, IP and UDP headers. 
+ * It will be what is transmitted out onto the network, as such it needs to be __packed__ to avoid having unused 
+ * memory locations in the header.
+ * 
+ * Normally I would preface each variable name with the variable type, in this case I have not done that as it is easier
+ * to preface the each field with which header type the field belong to - autocompletion groups things a bit more 
+ * logically in this case.
+ */ 
 struct __attribute__((__packed__)) network_packet {
     uint8_t ethernet_frame_dest_mac[6];
     uint8_t ethernet_frame_src_mac[6];
@@ -36,8 +47,21 @@ struct __attribute__((__packed__)) network_packet {
     uint8_t udp_datagram_payload[PAYLOAD_SIZE_BYTES];
 };
 
+/** 
+ *  Function that will select the correct ibverbs device to use based on the given IP address.
+ * 
+ *  \param[in]  strLocalIpAddress   String of the ip address of the local interface to use.
+ * 
+ *  \param[out] u8PortNumber        A NIC can have multiple physcial ports. This returns which port of the chosen NIC
+ *                                  to use. I have only tested on 1 port NICs, so hopefully this does what it should
+ *                                  when the port numbers is not equal to 1.
+ * 
+ *  \return Returns a pointer to the ibv_device that matches the given ip address. If no match is found, it will return
+ *          NULL.
+ */
 struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortNumber, char * strLocalIpAddress);
 
+// TODO: This function definition shoud eventually go into a common_functions.c file.
 struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex, char * strLocalIpAddress){
     
     struct ibv_device **dev_list;
