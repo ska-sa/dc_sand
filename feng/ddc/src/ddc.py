@@ -1,12 +1,15 @@
 """Digital Down Conversion Module for FEngine."""
 import numpy as np
 import cwg
+from numpy import genfromtxt
+from scipy import signal
+import matplotlib.pyplot as plt
 
 
 class DigitalDownConverter:
     """Digital Down Conversion."""
 
-    def __init__(self, decimation_factor: int, filter_coeffs: np.ndarray, fs: int) -> None:
+    def __init__(self, decimation_factor: int, fs: int) -> None:
         """Digital Down Conversion.
 
         Parameters
@@ -23,8 +26,39 @@ class DigitalDownConverter:
         None.
         """
         self.decimation_factor = decimation_factor
-        self.filter_coeffs = filter_coeffs
+        self.ddc_filter_coeffs = self._import_ddc_filter_coeffs(
+            "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
+        )
         self.fs = fs
+
+    def _import_ddc_filter_coeffs(self, filename: str = "ddc_filter_coeffs_107.csv"):
+        """Import Digital Down Converter Filter Coefficients from file.
+
+        Parameters
+        ----------
+        filename: str
+            Digital Down Converter Filter Coefficients filename.
+            The default name (if no passed filename): ddc_filter_coeffs_107.csv
+        Returns
+        -------
+        numpy ndarray of filter coefficients: type float.
+        """
+        # filename: str = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
+        print(f"Importing coefficients from {filename}")
+        ddc_coeffs = genfromtxt(filename, delimiter=",")
+        print(f"Imported {len(ddc_coeffs)} coefficients")
+        return ddc_coeffs
+
+    # def _fir(self, data, weights, channels):
+
+    #     npconv_time = []
+
+    #     tstart = time.time()
+    #     # npconv_result = np.array([np_convolve(xi, weights, mode='same') for xi in data])
+    #     filtered = signal.convolve(data, weights, mode='valid') / sum(weights)
+    #     print(npconv_time.append(time.time() - tstart))
+
+    #     return filtered
 
     def _mix(self, mixing_cw: np.ndarray, input_data: np.ndarray) -> np.ndarray:
         """Multiply mixing CW with input data.
@@ -41,7 +75,59 @@ class DigitalDownConverter:
         np.ndarray of type float
             Output array of complex-valued vector product.
         """
-        return input_data * mixing_cw
+        return input_data[0] * mixing_cw[0]
+
+    def _decode_8bit_to_10bit_to_float_data(self, data_8bit: np.ndarray) -> np.ndarray:
+        """Convert 8bit packed data to 10bit to float.
+
+        Note: Digitiser raw data 10bit and packed into 8bit words for transport.
+
+        Parameters
+        ----------
+        data_8bit: np.ndarray of type float
+            Array of input (8bit-packed) samples to be unpacked.
+
+        Returns
+        -------
+        decoded_data: np.ndarray of type float
+            Array of real-valued unpacked data.
+        """
+        pass
+
+    def _bandpass_fir_filter(self, input_data: np.ndarray) -> np.ndarray:
+        """Band-pass filter to remove out-of-band products.
+
+        Parameters
+        ----------
+        input_data: np.ndarray of type float
+            Input array of complex-valued samples of vector to be translated (mixed).
+
+        Returns
+        -------
+        filtered_data: np.ndarray of type float
+            Output array of complex-valued filtered data.
+        """
+        filtered = signal.convolve(input_data, self.ddc_filter_coeffs, mode="valid") / sum(self.ddc_filter_coeffs)
+
+        return filtered
+
+    def _decimate(self, input_data: np.ndarray, decimation_factor: int) -> np.ndarray:
+        """Decimate input data by decimation factor.
+
+        Parameters
+        ----------
+        decimation_factor: int
+            Down-sampling factor for input data array.
+        input_data: np.ndarray of type float
+            Input array of complex-valued samples of filtered vector to be decimated.
+
+        Returns
+        -------
+        decimated_data: np.ndarray of type float
+            Output array of complex-valued down-sampled data.
+
+        """
+        pass
 
     def run(self, input_data: np.ndarray, center_freq: float) -> np.ndarray:
         """Digital Down Conversion.
@@ -64,9 +150,9 @@ class DigitalDownConverter:
 
         # Generate the mixing cw tone.
         cw_scale = 1
-        awgn_scale = 0.0001
+        awgn_scale = 0.0
         fs = self.fs
-        num_samples = len(input_data)
+        num_samples = np.size(input_data)
         mixing_cw = cwg.generate_complx_cw(
             cw_scale=cw_scale, freq=center_freq, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale
         )
@@ -74,86 +160,40 @@ class DigitalDownConverter:
         # Translate the selected band.
         mix = self._mix(mixing_cw=mixing_cw, input_data=input_data)
 
-        # mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
-        # input_data_fft = np.fft.fft(input_data, axis=-1)
-        # mix_fft = np.fft.fft(mix, axis=-1)
+        mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
+        input_data_fft = np.fft.fft(input_data, axis=-1)
+        mix_fft = np.fft.fft(mix, axis=-1)
 
-        # plt.figure(1)
-        # plt.semilogy(mixing_cw_fft)
+        # embed()
 
-        # plt.figure(2)
-        # plt.semilogy(input_data_fft)
+        plt.figure(1)
+        plt.semilogy(mixing_cw_fft[0])
 
-        # plt.figure(3)
-        # plt.semilogy(mix_fft)
+        plt.figure(2)
+        plt.semilogy(input_data_fft[0])
 
-        # plt.show()
+        plt.figure(3)
+        plt.semilogy(mix_fft)
 
         # Filter the translated band.
+        filtered = self._bandpass_fir_filter(mix)
+
+        filtered_cw_fft = np.fft.fft(filtered, axis=-1)
+
+        plt.figure(4)
+        plt.semilogy(filtered_cw_fft)
+
+        plt.show()
 
         # Decimate the filtered band.
-        return mix
+        return filtered
 
-    def _decimate(self, input_data: np.ndarray, decimation_factor: int) -> np.ndarray:
-        """Decimate input data by decimation factor.
 
-        Parameters
-        ----------
-        decimation_factor: int
-            Down-sampling factor for input data array.
-        input_data: np.ndarray of type float
-            Input array of complex-valued samples of filtered vector to be decimated.
-
-        Returns
-        -------
-        decimated_data: np.ndarray of type float
-            Output array of complex-valued down-sampled data.
-
-        """
-        pass
-
-    def _bandpass_fir_filter(self, input_data: np.ndarray) -> np.ndarray:
-        """Band-pass filter to remove out-of-band products.
-
-        Parameters
-        ----------
-        filter_coeffs: np.ndarray of type float
-            Filter coefficients for bandpass filtering.
-        input_data: np.ndarray of type float
-            Input array of complex-valued samples of vector to be translated (mixed).
-
-        Returns
-        -------
-        filtered_data: np.ndarray of type float
-            Output array of complex-valued filtered data.
-
-        """
-        # taps = 1
-        # channels = int(len(input_data))
-        # samples = 2 * channels * (taps - 1)
-
-        # weights = _generate_weights(channels, taps)
-        # expected_fir = _pfb_fir_host(input_data, channels, weights)
-
-        # #np.testing.assert_allclose(h_out, expected_fir, rtol=1e-5, atol=1e-3)
-
-        # # plt.figure(2)
-        # # plt.plot(expected[0][0:100])
-        # # plt.show()
-
-    def _decode_8bit_to_10bit_to_float_data(self, data_8bit: np.ndarray) -> np.ndarray:
-        """Convert 8bit packed data to 10bit to float.
-
-        Note: Digitiser raw data 10bit and packed into 8bit words for transport.
-
-        Parameters
-        ----------
-        data_8bit: np.ndarray of type float
-            Array of input (8bit-packed) samples to be unpacked.
-
-        Returns
-        -------
-        decoded_data: np.ndarray of type float
-            Array of real-valued unpacked data.
-        """
-        pass
+# filename: str = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
+# print(f"Importing coefficients from {filename}")
+# coeffs = []
+# with open(filename, mode='r') as coeff_file:
+#     ddc_coeffs = csv.reader(coeff_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+#     for item in ddc_coeffs:
+#         coeffs.append(item)
+# print(f"Imported {len(coeffs)} coefficients")

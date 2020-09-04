@@ -34,7 +34,7 @@ def generate_real_cw(cw_scale: float, freq: float, fs: int, num_samples: int, aw
     # Generate AWGN
     awgn = _generate_awgn(awgn_scale, len(cwg))
 
-    return cwg + awgn
+    return [cwg + awgn]
 
 
 def generate_complx_cw(cw_scale: float, freq: float, fs: int, num_samples: int, awgn_scale: float) -> np.ndarray:
@@ -68,7 +68,7 @@ def generate_complx_cw(cw_scale: float, freq: float, fs: int, num_samples: int, 
     # Generate AWGN
     awgn = _generate_awgn(awgn_scale, len(cwg))
 
-    return cwg + awgn
+    return [cwg + awgn]
 
 
 def _generate_awgn(scale: float, array_length: int) -> np.ndarray:
