@@ -210,7 +210,8 @@ int main()
      */
     struct ibv_flow *eth_flow;
     eth_flow = ibv_create_flow(qp, &flow_rule.attr);
-    if (!eth_flow) {
+    if (!eth_flow)
+    {
         printf("Couldn't attach steering flow\n");
         exit(1);
     }
@@ -336,19 +337,21 @@ int main()
          * have waited a set amount of time, but calling gettimeofday() repeatedly resulted in dropped a packets. The
          * 30000000 packet threshold was chosen to correspond to roughly 1 print every 10s at a 100 Gbps data rate.
          */
-        if(u64NumPacketsReceived % 30000000 == 0){
+        if(u64NumPacketsReceived % 30000000 == 0)
+        {
             //Calculate data rates
+            u64CurrentPostSendCount = u64NumPacketsReceived;
+
             gettimeofday(&sCurrentTime,NULL);
             double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                         - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
-
-            u64CurrentPostSendCount = u64NumPacketsReceived;
             double dDataReceived_Gb = (u64CurrentPostSendCount - u64StartPostSendCount) 
                     * sizeof(struct network_packet)/1000000000 * 8;
             double dDataRate_Gbps = dDataReceived_Gb/dTimeDifference;
             double dTotalDataTransferred_GB = u64NumPacketsReceived * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
+                            
             printf("\rRunning Time: %.2fs. Total Received %.3f GB.\
                     Current Data Rate: %.3f Gbps, Packets: received/dropped %ld/%ld",
                     dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps, u64NumPacketsReceived, u64NumPacketDrops);

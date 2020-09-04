@@ -62,8 +62,8 @@ struct __attribute__((__packed__)) network_packet {
 struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortNumber, char * strLocalIpAddress);
 
 // TODO: This function definition shoud eventually go into a common_functions.c file.
-struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex, char * strLocalIpAddress){
-    
+struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex, char * strLocalIpAddress)
+{    
     struct ibv_device **dev_list;
     struct ibv_device *ib_dev;
     struct ibv_context *p_context;
@@ -137,14 +137,16 @@ struct ibv_device * get_ibv_device_from_ip(uint8_t * u8PortIndex, char * strLoca
 
         /* 3.3 Cleanup */
         ibv_close_device(p_context);
-        if(u8DeviceFound){
+        if(u8DeviceFound)
+        {
             break;
         }
 
     }
 
     /* 4. Set pointer to NULL if no device is found for a safe exit condition */
-    if(u8DeviceFound == 0){
+    if(u8DeviceFound == 0)
+    {
         *u8PortIndex = 0;
         ib_dev = NULL;
     }

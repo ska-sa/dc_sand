@@ -356,9 +356,11 @@ int main()
         gettimeofday(&sCurrentTime,NULL);
         double dTimeDifference = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sTimerStartTime.tv_sec - ((double)sTimerStartTime.tv_usec)/1000000.0;
-        if(dTimeDifference > 2){
+        if(dTimeDifference > 2)
+        {
             //Calculate data rate
             u64CurrentPostSendCount = u64NumCompletedTotal;
+
             double dDataTransferred_Gb = (u64CurrentPostSendCount - u64StartPostSendCount)
                     * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000 * 8;
             double dDataRate_Gbps = dDataTransferred_Gb/dTimeDifference;
@@ -366,6 +368,7 @@ int main()
                     * NUM_WE_PER_POST_SEND * sizeof(struct network_packet)/1000000000;
             double dRuntime_s = (double)sCurrentTime.tv_sec + ((double)sCurrentTime.tv_usec)/1000000.0
                             - (double)sInitialStartTime.tv_sec - ((double)sInitialStartTime.tv_usec)/1000000.0;
+
             printf("\rRunning Time: %.2fs. Total Transmitted %.3f GB. Current Data Rate: %.3f Gbps"
                     ,dRuntime_s,dTotalDataTransferred_GB,dDataRate_Gbps);
             fflush(stdout);
@@ -462,7 +465,8 @@ void populate_packet(struct network_packet * p_network_packet)
     
     /* At first glance this could be an if statement, however if adding all the carry bits causes an additional carry,
        then this step needs to occur again, this is why a while loop is necessary. */ 
-    while (u32Sum > 0xffff){
+    while (u32Sum > 0xffff)
+    {
         u32Sum = (u32Sum & 0xffff) + (u32Sum >> 16);
     }
 
