@@ -1,2 +1,2 @@
-custom_ibverbs_tx
-custom_ibverbs_rx
+ibverbs_tx
+ibverbs_rx

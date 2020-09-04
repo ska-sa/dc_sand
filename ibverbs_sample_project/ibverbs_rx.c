@@ -101,7 +101,7 @@ int main()
     qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp) 
     {
-        printf("Couldn't create RSS QP\n");
+        printf("Couldn't create QP\n");
         exit(1);
     }
 
