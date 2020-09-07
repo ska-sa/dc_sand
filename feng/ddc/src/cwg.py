@@ -29,7 +29,7 @@ def generate_real_cw(cw_scale: float, freq: float, fs: int, num_samples: int, aw
     in_array = np.linspace(0, (cycles), num_samples)
 
     # Generate CWG
-    cwg = np.real(cw_scale * np.exp(1j * 2 * np.pi * in_array).astype(np.complex64)).astype(np.float32)
+    cwg = np.real(cw_scale * np.exp(-1j * 2 * np.pi * in_array).astype(np.complex64)).astype(np.float32)
 
     # Generate AWGN
     awgn = _generate_awgn(awgn_scale, len(cwg))
@@ -63,7 +63,7 @@ def generate_complx_cw(cw_scale: float, freq: float, fs: int, num_samples: int, 
     in_array = np.linspace(0, (cycles), num_samples)
 
     # Generate CWG
-    cwg = cw_scale * (np.exp(1j * 2 * np.pi * in_array)).astype(np.complex64)
+    cwg = cw_scale * (np.exp(-1j * 2 * np.pi * in_array)).astype(np.complex64)
 
     # Generate AWGN
     awgn = _generate_awgn(awgn_scale, len(cwg))

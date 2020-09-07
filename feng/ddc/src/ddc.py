@@ -38,7 +38,7 @@ class DigitalDownConverter:
         ----------
         filename: str
             Digital Down Converter Filter Coefficients filename.
-            The default name (if no passed filename): ddc_filter_coeffs_107.csv
+            The default name (if not passed filename): ddc_filter_coeffs_107.csv
         Returns
         -------
         numpy ndarray of filter coefficients: type float.
@@ -48,17 +48,6 @@ class DigitalDownConverter:
         ddc_coeffs = genfromtxt(filename, delimiter=",")
         print(f"Imported {len(ddc_coeffs)} coefficients")
         return ddc_coeffs
-
-    # def _fir(self, data, weights, channels):
-
-    #     npconv_time = []
-
-    #     tstart = time.time()
-    #     # npconv_result = np.array([np_convolve(xi, weights, mode='same') for xi in data])
-    #     filtered = signal.convolve(data, weights, mode='valid') / sum(weights)
-    #     print(npconv_time.append(time.time() - tstart))
-
-    #     return filtered
 
     def _mix(self, mixing_cw: np.ndarray, input_data: np.ndarray) -> np.ndarray:
         """Multiply mixing CW with input data.
@@ -111,13 +100,11 @@ class DigitalDownConverter:
 
         return filtered
 
-    def _decimate(self, input_data: np.ndarray, decimation_factor: int) -> np.ndarray:
+    def _decimate(self, input_data: np.ndarray) -> np.ndarray:
         """Decimate input data by decimation factor.
 
         Parameters
         ----------
-        decimation_factor: int
-            Down-sampling factor for input data array.
         input_data: np.ndarray of type float
             Input array of complex-valued samples of filtered vector to be decimated.
 
@@ -127,7 +114,8 @@ class DigitalDownConverter:
             Output array of complex-valued down-sampled data.
 
         """
-        pass
+        # Decimate input array. Keep only every 'n' sample where 'n' is the decimation factor.
+        return input_data[0 :: self.decimation_factor]
 
     def run(self, input_data: np.ndarray, center_freq: float) -> np.ndarray:
         """Digital Down Conversion.
@@ -142,7 +130,7 @@ class DigitalDownConverter:
         Returns
         -------
         data_mix: np.ndarray of type float
-            Output array of complex-valued of vector product.
+            Output array of complex-valued vector of translated, filtered and decimated data.
         """
         # Sanity check the input data.
         if len(input_data) == 0:
@@ -164,8 +152,6 @@ class DigitalDownConverter:
         input_data_fft = np.fft.fft(input_data, axis=-1)
         mix_fft = np.fft.fft(mix, axis=-1)
 
-        # embed()
-
         plt.figure(1)
         plt.semilogy(mixing_cw_fft[0])
 
@@ -176,17 +162,24 @@ class DigitalDownConverter:
         plt.semilogy(mix_fft)
 
         # Filter the translated band.
-        filtered = self._bandpass_fir_filter(mix)
+        filtered_data = self._bandpass_fir_filter(mix)
 
-        filtered_cw_fft = np.fft.fft(filtered, axis=-1)
+        filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
 
         plt.figure(4)
         plt.semilogy(filtered_cw_fft)
 
+        # Decimate the filtered band.
+        decimated_data = self._decimate(filtered_data)
+
+        decimated_cw_fft = np.fft.fft(decimated_data, axis=-1)
+
+        plt.figure(5)
+        plt.semilogy(decimated_cw_fft)
+
         plt.show()
 
-        # Decimate the filtered band.
-        return filtered
+        return decimated_data
 
 
 # filename: str = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
