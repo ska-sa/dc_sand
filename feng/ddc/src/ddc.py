@@ -148,31 +148,29 @@ class DigitalDownConverter:
         # Translate the selected band.
         mix = self._mix(mixing_cw=mixing_cw, input_data=input_data)
 
-        mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
-        input_data_fft = np.fft.fft(input_data, axis=-1)
-        mix_fft = np.fft.fft(mix, axis=-1)
-
-        plt.figure(1)
-        plt.semilogy(mixing_cw_fft[0])
-
-        plt.figure(2)
-        plt.semilogy(input_data_fft[0])
-
-        plt.figure(3)
-        plt.semilogy(mix_fft)
-
         # Filter the translated band.
         filtered_data = self._bandpass_fir_filter(mix)
-
-        filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
-
-        plt.figure(4)
-        plt.semilogy(filtered_cw_fft)
 
         # Decimate the filtered band.
         decimated_data = self._decimate(filtered_data)
 
+        mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
+        input_data_fft = np.fft.rfft(input_data, axis=-1)
+        mix_fft = np.fft.fft(mix, axis=-1)
+        filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
         decimated_cw_fft = np.fft.fft(decimated_data, axis=-1)
+
+        plt.figure(1)
+        plt.semilogy(input_data_fft[0])
+
+        plt.figure(2)
+        plt.semilogy(mixing_cw_fft[0])
+
+        plt.figure(3)
+        plt.semilogy(mix_fft)
+
+        plt.figure(4)
+        plt.semilogy(filtered_cw_fft)
 
         plt.figure(5)
         plt.semilogy(decimated_cw_fft)
