@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture
 def DDC_fixture():
     """Create DDC test object for pytest."""
-    decimation_factor = 8
+    decimation_factor = 16
     fs = 1712e6
     return ddc.DigitalDownConverter(decimation_factor=decimation_factor, fs=fs)
 
@@ -22,16 +22,22 @@ def test_run_ddc_center_cw(DDC_fixture):
     cw_scale = 1
     freq = 100e6
     fs = 1712e6
-    num_samples = 8192
+    num_samples = 8192 * 2
     awgn_scale = 0
     mixing_freq = freq
     data = cwg.generate_real_cw(cw_scale=cw_scale, freq=freq, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale)
     decimated_data = DDC_fixture.run(data, mixing_freq)
 
-    ddc_fft = np.fft.rfft(np.real(decimated_data), axis=-1)
+    # Extract length of data for fft
+    decimated_data_trunc = decimated_data[-1024:]
+
+    # Compute FFT and square to get power spectrum
+    ddc_fft = np.power(np.fft.fft(decimated_data_trunc, axis=-1), 2)
+
+    # Find where the maximum occurs. This should be the DC bin.
     ddc_channel = np.where(ddc_fft == np.max(ddc_fft))
 
-    # Specify expected channel where we expect the translation to occur
+    # Specify expected channel where we expect the translation to occur. In this test it should be the DC bin(0)
     expected_translation_center_channel = 0
 
     if np.size(ddc_channel) > 1:
@@ -54,9 +60,9 @@ def test_run_ddc_dual_cw(DDC_fixture):
     # Generate CW to test DDC
     cw_scale = 1
     freq1 = 100e6
-    freq2 = 110e6
+    freq2 = 103343750
     fs = 1712e6
-    num_samples = 8192
+    num_samples = 8192 * 3
     awgn_scale = 0
     mixing_freq = freq1
 
@@ -66,12 +72,18 @@ def test_run_ddc_dual_cw(DDC_fixture):
 
     decimated_data = DDC_fixture.run(data, mixing_freq)
 
-    ddc_fft = np.power(np.fft.fft(decimated_data, axis=-1), 2)
-    ddc_channel = np.where(ddc_fft > channel_threshold)
+    # Extract length of data for fft
+    decimated_data_trunc = decimated_data[-1024:]
+
+    # Compute FFT and square to get power spectrum
+    ddc_fft = np.power(np.fft.fft(decimated_data_trunc, axis=-1), 2)
+
+    # Find where the maximum occurs. This should be the DC bin.
+    ddc_channel = np.where(np.abs(ddc_fft) > channel_threshold)
 
     # Specify expected channel where we expect the translation to occur
     expected_translation_center_channel = 0
-    expected_translation_off_center_channel = 47
+    expected_translation_off_center_channel = 32
 
     if np.size(ddc_channel) > 2:
         raise ValueError(
@@ -89,7 +101,44 @@ def test_run_ddc_bandedge_cw(DDC_fixture):
     This will differ depending on the NarrowBand mode to be tested.
 
     """
-    pass
+    # Specify Channel threshold to decide if energy present is significant
+    channel_threshold = 1e3
+
+    # Generate CW to test DDC
+    cw_scale = 1
+    freq1 = 47.5e6
+    freq2 = 152.5e6
+    fs = 1712e6
+    num_samples = 8192 * 3
+    awgn_scale = 0
+    mixing_freq = 100e6
+
+    cw1 = cwg.generate_real_cw(cw_scale=cw_scale, freq=freq1, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale)
+    cw2 = cwg.generate_real_cw(cw_scale=cw_scale, freq=freq2, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale)
+    data = [cw1[0] + cw2[0]]
+
+    decimated_data = DDC_fixture.run(data, mixing_freq)
+
+    # Extract length of data for fft
+    decimated_data_trunc = decimated_data[-1024:]
+
+    # Compute FFT and square to get power spectrum
+    ddc_fft = np.power(np.fft.fft(decimated_data_trunc, axis=-1), 2)
+
+    # Find where the maximum occurs. This should be the DC bin.
+    ddc_channel = np.where(np.abs(ddc_fft) > channel_threshold)
+
+    # Specify expected channel where we expect the translation to occur
+    expected_translation_positive_band_edge = 503
+    expected_translation_negative_band_edge = len(decimated_data_trunc) - 503
+
+    if np.size(ddc_channel) > 2:
+        raise ValueError(
+            f"Too many channels with energy. Expected 2 (DC bin and bin 47 with freq {(freq2-freq1)/1e6}MHz). Instead received {len(ddc_channel)} channel(s)."
+        )
+
+    assert ddc_channel[0][0] == expected_translation_positive_band_edge
+    assert ddc_channel[0][1] == expected_translation_negative_band_edge
 
 
 def test_run_ddc_out_of_band_cw(DDC_fixture):
@@ -99,4 +148,56 @@ def test_run_ddc_out_of_band_cw(DDC_fixture):
     This will differ depending on the NarrowBand mode to be tested.
 
     """
-    pass
+    # Specify Channel threshold to decide if energy present is significant
+    channel_threshold = 1e3
+
+    # Generate CW to test DDC
+    cw_scale = 1
+    freq1 = 100e6
+    freq2 = 214e6
+    fs = 1712e6
+    num_samples = 8192 * 3
+    awgn_scale = 0
+    mixing_freq = freq1
+
+    cw1 = cwg.generate_real_cw(cw_scale=cw_scale, freq=freq1, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale)
+    cw2 = cwg.generate_real_cw(cw_scale=cw_scale, freq=freq2, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale)
+    data = [cw1[0] + cw2[0]]
+
+    decimated_data = DDC_fixture.run(data, mixing_freq)
+
+    # Extract length of data for fft
+    decimated_data_trunc = decimated_data[-1024:]
+
+    # Compute FFT and square to get power spectrum
+    ddc_fft = np.power(np.fft.fft(decimated_data_trunc, axis=-1), 2)
+
+    # Find where the maximum occurs. This should be the DC bin.
+    ddc_channel = np.where(np.abs(ddc_fft) > channel_threshold)
+
+    # Specify expected channel where we expect the translation to occur
+    expected_translation_center_channel = 0
+
+    if np.size(ddc_channel) > 1:
+        raise ValueError(
+            f"Too many channels with energy. Expected only 1 (DC bin). Instead received {len(ddc_channel)} channel(s)."
+        )
+
+    assert ddc_channel[0][0] == expected_translation_center_channel
+
+    # Get energy in known center channel
+    Energy_center_channel = ddc_fft[0]
+
+    # Clear center channel and check next highest channel power.
+    ddc_fft[0] = 0
+
+    # Find where the next maximum occurs.
+    ddc_channel = np.where(np.abs(ddc_fft) == np.max(np.abs(ddc_fft)))
+
+    # Get Energy in next highest channel. This should be as a result of the out of band tone.
+    Energy_next_highest_channel = ddc_fft[ddc_channel[0][0]]
+
+    # Compute dB difference. This should be greater than 60dB.
+    dB_diff = 10 * np.log10(np.abs(Energy_center_channel / Energy_next_highest_channel))
+
+    assert dB_diff > 60
