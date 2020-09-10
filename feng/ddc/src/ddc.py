@@ -3,13 +3,14 @@ import numpy as np
 import cwg
 from numpy import genfromtxt
 from scipy import signal
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 
 
 class DigitalDownConverter:
     """Digital Down Conversion."""
 
-    def __init__(self, decimation_factor: int, fs: int) -> None:
+    def __init__(self, decimation_factor: int, fs: int, ddc_coeff_filename: str) -> None:
         """Digital Down Conversion.
 
         Parameters
@@ -26,9 +27,7 @@ class DigitalDownConverter:
         None.
         """
         self.decimation_factor = decimation_factor
-        self.ddc_filter_coeffs = self._import_ddc_filter_coeffs(
-            "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
-        )
+        self.ddc_filter_coeffs = self._import_ddc_filter_coeffs(ddc_coeff_filename)
         self.fs = fs
 
     def _import_ddc_filter_coeffs(self, filename: str = "ddc_filter_coeffs_107.csv"):
@@ -43,7 +42,6 @@ class DigitalDownConverter:
         -------
         numpy ndarray of filter coefficients: type float.
         """
-        # filename: str = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
         print(f"Importing coefficients from {filename}")
         ddc_coeffs = genfromtxt(filename, delimiter=",")
         print(f"Imported {len(ddc_coeffs)} coefficients")
@@ -154,37 +152,28 @@ class DigitalDownConverter:
         # Decimate the filtered band.
         decimated_data = self._decimate(filtered_data)
 
-        mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
-        input_data_fft = np.fft.rfft(input_data, axis=-1)
-        mix_fft = np.fft.fft(mix, axis=-1)
-        filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
-        decimated_cw_fft = np.fft.fft(decimated_data, axis=-1)
+        # For Debug:
+        # mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
+        # input_data_fft = np.fft.rfft(input_data, axis=-1)
+        # mix_fft = np.fft.fft(mix, axis=-1)
+        # filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
+        # decimated_cw_fft = np.fft.fft(decimated_data, axis=-1)
 
-        plt.figure(1)
-        plt.semilogy(input_data_fft[0])
+        # plt.figure(1)
+        # plt.semilogy(input_data_fft[0])
 
-        plt.figure(2)
-        plt.semilogy(mixing_cw_fft[0])
+        # plt.figure(2)
+        # plt.semilogy(mixing_cw_fft[0])
 
-        plt.figure(3)
-        plt.semilogy(mix_fft)
+        # plt.figure(3)
+        # plt.semilogy(mix_fft)
 
-        plt.figure(4)
-        plt.semilogy(filtered_cw_fft)
+        # plt.figure(4)
+        # plt.semilogy(filtered_cw_fft)
 
-        plt.figure(5)
-        plt.semilogy(decimated_cw_fft)
+        # plt.figure(5)
+        # plt.semilogy(decimated_cw_fft)
 
-        plt.show()
+        # plt.show()
 
         return decimated_data
-
-
-# filename: str = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
-# print(f"Importing coefficients from {filename}")
-# coeffs = []
-# with open(filename, mode='r') as coeff_file:
-#     ddc_coeffs = csv.reader(coeff_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-#     for item in ddc_coeffs:
-#         coeffs.append(item)
-# print(f"Imported {len(coeffs)} coefficients")
