@@ -1,6 +1,7 @@
 """Test Process for CW Generator."""
 import pytest
 import numpy as np
+import logging
 
 
 @pytest.fixture
@@ -28,9 +29,10 @@ def test_cw_real(cw_fixture):
 
     # Compute real FFT on generated CW
     cw_fft = np.fft.rfft(np.real(cw), axis=-1)
-    cw_channel = np.where(cw_fft == np.max(cw_fft))
+    cw_channel = np.where(cw_fft == np.max(cw_fft))[1][0]
 
-    assert cw_channel[1][0] == expected_channel
+    logging.info(f"Found cw signal in channel {cw_channel}")
+    assert cw_channel == expected_channel
 
 
 def test_cw_complex(cw_fixture):

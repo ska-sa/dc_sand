@@ -3,6 +3,7 @@ import ddc
 import cwg
 import numpy as np
 import pytest
+import logging
 
 
 @pytest.fixture
@@ -224,6 +225,7 @@ def test_run_ddc_out_of_band_cw(DDC_fixture):
 
     # Compute dB difference. This should be greater than 60dB.
     dB_diff = 10 * np.log10(np.abs(Energy_center_channel / Energy_next_highest_channel))
+    logging.info(f"dB diff: {dB_diff}")
 
     # Check if the test passes
     assert dB_diff > 60
