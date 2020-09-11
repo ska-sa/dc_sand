@@ -10,7 +10,7 @@ def DDC_fixture():
     """Create DDC test object for pytest."""
     decimation_factor = 16
     fs = 1712e6
-    ddc_coeff_filename = "/home/avanderbyl/Git/dc_sand/feng/ddc/src/ddc_coeff_107MHz.csv"
+    ddc_coeff_filename = "../src/ddc_coeff_107MHz.csv"
     return ddc.DigitalDownConverter(decimation_factor=decimation_factor, fs=fs, ddc_coeff_filename=ddc_coeff_filename)
 
 
