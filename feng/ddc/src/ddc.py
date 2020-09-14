@@ -10,7 +10,7 @@ from scipy import signal
 class DigitalDownConverter:
     """Digital Down Conversion."""
 
-    def __init__(self, decimation_factor: int, fs: int, ddc_coeff_filename: str) -> None:
+    def __init__(self, decimation_factor: int, sampling_frequency: int, ddc_coeff_filename: str) -> None:
         """Digital Down Conversion.
 
         Parameters
@@ -19,7 +19,7 @@ class DigitalDownConverter:
             Down-sampling factor for input data array.
         filter_coeffs: np.ndarray of type float
             Filter coefficients for bandpass filtering.
-        fs: int
+        sampling_frequency: int
             Sampling rate of the digitiser.
 
         Returns
@@ -27,8 +27,8 @@ class DigitalDownConverter:
         None.
         """
         self.decimation_factor = decimation_factor
-        self.ddc_filter_coeffs = self._import_ddc_filter_coeffs(ddc_coeff_filename)
-        self.fs = fs
+        self._import_ddc_filter_coeffs(filename=ddc_coeff_filename)
+        self.sampling_frequency = sampling_frequency
 
     def _import_ddc_filter_coeffs(self, filename: str = "ddc_filter_coeffs_107.csv"):
         """Import Digital Down Converter Filter Coefficients from file.
@@ -45,9 +45,10 @@ class DigitalDownConverter:
         print(f"Importing coefficients from {filename}")
         ddc_coeffs = genfromtxt(filename, delimiter=",")
         print(f"Imported {len(ddc_coeffs)} coefficients")
-        return ddc_coeffs
+        self.ddc_filter_coeffs = ddc_coeffs
+        # return ddc_coeffs
 
-    def _mix(self, mixing_cw: np.ndarray, input_data: np.ndarray) -> np.ndarray:
+    def _mix(self, mixing_carrier_wave: np.ndarray, input_data: np.ndarray) -> np.ndarray:
         """Multiply mixing CW with input data.
 
         Parameters
@@ -62,7 +63,7 @@ class DigitalDownConverter:
         np.ndarray of type float
             Output array of complex-valued vector product.
         """
-        return input_data[0] * mixing_cw[0]
+        return input_data * mixing_carrier_wave
 
     def _decode_8bit_to_10bit_to_float_data(self, data_8bit: np.ndarray) -> np.ndarray:
         """Convert 8bit packed data to 10bit to float.
@@ -136,15 +137,20 @@ class DigitalDownConverter:
 
         # Generate the mixing cw tone.
         cw_scale = 1
-        awgn_scale = 0.0
-        fs = self.fs
+        noise_scale = 0.0
+        sampling_frequency = self.sampling_frequency
         num_samples = np.size(input_data)
-        mixing_cw = cwg.generate_complx_cw(
-            cw_scale=cw_scale, freq=center_freq, fs=fs, num_samples=num_samples, awgn_scale=awgn_scale
+        mixing_carrier_wave = cwg.generate_carrier_wave(
+            cw_scale=cw_scale,
+            freq=center_freq,
+            sampling_frequency=sampling_frequency,
+            num_samples=num_samples,
+            noise_scale=noise_scale,
+            complex=True,
         )
 
         # Translate the selected band.
-        mix = self._mix(mixing_cw=mixing_cw, input_data=input_data)
+        mix = self._mix(mixing_carrier_wave=mixing_carrier_wave, input_data=input_data)
 
         # Filter the translated band.
         filtered_data = self._bandpass_fir_filter(mix)
@@ -153,17 +159,17 @@ class DigitalDownConverter:
         decimated_data = self._decimate(filtered_data)
 
         # For Debug:
-        # mixing_cw_fft = np.fft.fft(mixing_cw, axis=-1)
-        # input_data_fft = np.fft.rfft(input_data, axis=-1)
-        # mix_fft = np.fft.fft(mix, axis=-1)
-        # filtered_cw_fft = np.fft.fft(filtered_data, axis=-1)
-        # decimated_cw_fft = np.fft.fft(decimated_data, axis=-1)
+        # mixing_cw_fft = np.power(np.fft.fft(mixing_carrier_wave, axis=-1), 2)
+        # input_data_fft = np.power(np.fft.rfft(input_data, axis=-1), 2)
+        # mix_fft = np.power(np.fft.fft(mix, axis=-1), 2)
+        # filtered_cw_fft = np.power(np.fft.fft(filtered_data, axis=-1), 2)
+        # decimated_cw_fft = np.power(np.fft.fft(decimated_data, axis=-1), 2)
 
         # plt.figure(1)
-        # plt.semilogy(input_data_fft[0])
+        # plt.semilogy(input_data_fft)
 
         # plt.figure(2)
-        # plt.semilogy(mixing_cw_fft[0])
+        # plt.semilogy(mixing_cw_fft)
 
         # plt.figure(3)
         # plt.semilogy(mix_fft)
