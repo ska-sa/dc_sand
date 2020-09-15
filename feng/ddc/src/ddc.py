@@ -99,22 +99,24 @@ class DigitalDownConverter:
 
         return filtered
 
-    def _decimate(self, input_data: np.ndarray) -> np.ndarray:
+    def _decimate(self, input_data: np.ndarray, decimate_offset: int) -> np.ndarray:
         """Decimate input data by decimation factor.
 
         Parameters
         ----------
         input_data: np.ndarray of type float
             Input array of complex-valued samples of filtered vector to be decimated.
+        decimate_offset: int
+            Specify an offset from sample 0.
 
         Returns
         -------
         decimated_data: np.ndarray of type float
-            Output array of complex-valued down-sampled data.
+            Output array of complex-valued down-sampled data. Default decimate_offset = 0.
 
         """
         # Decimate input array. Keep only every 'n' sample where 'n' is the decimation factor.
-        return input_data[0 :: self.decimation_factor]
+        return input_data[decimate_offset :: self.decimation_factor]
 
     def run(self, input_data: np.ndarray, center_freq: float) -> np.ndarray:
         """Digital Down Conversion.
@@ -156,7 +158,8 @@ class DigitalDownConverter:
         filtered_data = self._bandpass_fir_filter(mix)
 
         # Decimate the filtered band.
-        decimated_data = self._decimate(filtered_data)
+        decimate_offset = 0
+        decimated_data = self._decimate(filtered_data, decimate_offset)
 
         # For Debug:
         # mixing_cw_fft = np.power(np.fft.fft(mixing_carrier_wave, axis=-1), 2)

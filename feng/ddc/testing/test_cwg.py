@@ -1,6 +1,7 @@
 """Test Process for CW Generator."""
 import pytest
 import numpy as np
+import logging
 
 
 @pytest.fixture
@@ -17,13 +18,13 @@ def test_cw_real(cw_fixture):
     freq = 100e6
     sampling_frequency = 1712e6
     num_samples = 8192
-    awgn_scale = 0
+    noise_scale = 0
     cw = cw_fixture.generate_carrier_wave(
         cw_scale=cw_scale,
         freq=freq,
         sampling_frequency=sampling_frequency,
         num_samples=num_samples,
-        noise_scale=awgn_scale,
+        noise_scale=noise_scale,
         complex=False,
     )
 
@@ -33,9 +34,10 @@ def test_cw_real(cw_fixture):
 
     # Compute real FFT on generated CW
     cw_fft = np.fft.rfft(np.real(cw), axis=-1)
-    cw_channel = np.where(cw_fft == np.max(cw_fft))
+    cw_channel = np.where(cw_fft == np.max(cw_fft))[0][0]
 
-    assert cw_channel[0][0] == expected_channel
+    logging.info(f"Found cw signal in channel {cw_channel}")
+    assert cw_channel == expected_channel
 
 
 def test_cw_complex(cw_fixture):
@@ -45,13 +47,13 @@ def test_cw_complex(cw_fixture):
     sampling_frequency = 1712e6
     num_samples = 8192
     fft_length = 8192
-    awgn_scale = 0
+    noise_scale = 0
     cw = cw_fixture.generate_carrier_wave(
         cw_scale=cw_scale,
         freq=freq,
         sampling_frequency=sampling_frequency,
         num_samples=num_samples,
-        noise_scale=awgn_scale,
+        noise_scale=noise_scale,
         complex=True,
     )
 
@@ -66,6 +68,7 @@ def test_cw_complex(cw_fixture):
     cw_fft_cmplx = np.fft.fft(cw, axis=-1)
 
     # Compute Complex FFT on generated CW
-    cw_channel = np.where(cw_fft_cmplx == np.max(cw_fft_cmplx))
+    cw_channel = np.where(cw_fft_cmplx == np.max(cw_fft_cmplx))[0][0]
 
-    assert cw_channel[0][0] == expected_channel
+    logging.info(f"Found cw signal in channel {cw_channel}")
+    assert cw_channel == expected_channel

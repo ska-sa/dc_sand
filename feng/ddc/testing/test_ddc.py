@@ -3,6 +3,7 @@ import ddc
 import cwg
 import numpy as np
 import pytest
+import logging
 
 
 @pytest.fixture
@@ -293,4 +294,5 @@ def test_run_ddc_out_of_band_cw(DDC_fixture):
     dB_diff = 10 * np.log10(np.abs(Energy_center_channel / Energy_next_highest_channel))
 
     # Check if the test passes
+    logging.info(f"dB diff: {dB_diff}")
     assert dB_diff > signal_to_noise_ratio_threshold_dB
