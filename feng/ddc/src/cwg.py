@@ -15,7 +15,7 @@ def generate_carrier_wave(
     freq: float
         Frequency of CW to be generated.
     sampling_frequency: int
-        Sample rate for generated CW.
+        Sample rate for generated CW. This is expressed in Hz. E.g. 1712e6.
     num_samples: int
         Number of samples for generated CW.
     noise_scale: float

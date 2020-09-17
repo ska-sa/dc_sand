@@ -13,7 +13,16 @@ def cw_fixture():
 
 
 def test_cw_real(cw_fixture):
-    """Test to verify real-valued CW generated for mixing CW as well as test vectors."""
+    """Test to verify real-valued CW generated for mixing CW as well as test vectors.
+
+    Test Overview:
+    This test will generate a single real-only valued CW tone.
+    The intention is to check for the correct frequency generation of the CW tone.
+    The test CW tone is 100MHz.
+    The test will look for the following:
+    a) Is the test tone correctly generated? This is verified using an FFT.
+
+    """
     cw_scale = 1
     freq = 100e6
     sampling_frequency = 1712e6
@@ -41,7 +50,16 @@ def test_cw_real(cw_fixture):
 
 
 def test_cw_complex(cw_fixture):
-    """Test to verify complex valued CW generated for mixing CW as well as test vectors."""
+    """Test to verify complex valued CW generated for mixing CW as well as test vectors.
+
+    Test Overview:
+    This test will generate a single complex valued CW tone.
+    The intention is to check for the correct frequency generation of the CW tone.
+    The test CW tone is 214MHz.
+    The test will look for the following:
+    a) Is the test tone correctly generated? This is verified using an FFT.
+
+    """
     cw_scale = 1
     freq = 214e6
     sampling_frequency = 1712e6

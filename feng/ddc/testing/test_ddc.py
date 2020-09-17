@@ -23,6 +23,14 @@ def test_run_ddc_center_cw(DDC_fixture):
     """Test to verify correct translation of center frequency CW down to baseband (DC).
 
     The purpose of this test is to check the correct translation of the center frequency CW.
+
+    Test Overview:
+    This test will inject a single CW tone in the band center.
+    The intention is to check for the correct position of the CW tone in frequency domain.
+    The test CW tone is 100MHz for a band center of 100MHz.
+    The test will look for the following:
+    a) Is the test tone correctly placed in it's respective frequency channel?
+
     """
     # Specify Channel threshold to decide if energy present is significant
     channel_threshold = 1e5
@@ -76,6 +84,15 @@ def test_run_ddc_dual_cw(DDC_fixture):
 
     The purpose of this test is to check the correct translation of the center frequency CW as well as
     a second arbitrary CW tone placed mid-band.
+
+    Test Overview:
+    This test will inject two CW tones - one in the band center and one offset from band center.
+    The intention is to check for the correct position of the two CW tones in frequency domain.
+    The two test CW tones are 100MHz and 103.343750MHz for a band center of 100MHz.
+    The offset test CW tone is chosen to fall in the center of the frequency channel.
+    The test will look for the following:
+    a) Are the two test tones correctly placed in their respective frequency channels?
+
     """
     # Specify Channel threshold to decide if energy present is significant
     channel_threshold = 1e5
@@ -145,6 +162,14 @@ def test_run_ddc_bandedge_cw(DDC_fixture):
 
     The purpose of this test is to check the correct translation of the two CW tones placed at the band edges.
     This will differ depending on the NarrowBand mode to be tested.
+
+    Test Overview:
+    This test will inject two CW tones - one on each of the band edges.
+    The intention is to check for the correct position of the two CW tones in frequency domain.
+    The two test CW tones are 51.019287109375MHz and 148.980712890625MHz for a band center of 100MHz.
+    These two test CW tones are chosen to fall in the center of their respective bins.
+    The test will look for the following:
+    a) Are the two test tones correctly placed in their respective frequency channels?
 
     """
     # Specify Channel threshold to decide if energy present is significant
@@ -217,6 +242,15 @@ def test_run_ddc_out_of_band_cw(DDC_fixture):
 
     The purpose of this test is to check the correct exclusion of an out-of-band CW tone.
     This will differ depending on the NarrowBand mode to be tested.
+
+    Test Overview:
+    This test will inject two CW tones - one in band and another out-of-band.
+    The intention is to check for suitable supression of the out of band tone. The two test
+    CW tones are 100MHz (in-band as the mixing frequency is also 100MHz) and 214MHz (out-of-band).
+    The out-of-band tone should be greater than 60dB below the in-band tone for the test to pass.
+    The test will look for the following:
+    a) Is the in-band tone in the correct frequency channel?
+    b) Is the out-of-band tone > 60dB below the in-band frequency channel?
 
     """
     # Specify Channel threshold to decide if energy present is significant

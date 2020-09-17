@@ -99,7 +99,7 @@ class DigitalDownConverter:
 
         return filtered
 
-    def _decimate(self, input_data: np.ndarray, decimate_offset: int) -> np.ndarray:
+    def _decimate(self, input_data: np.ndarray, decimate_offset: int = 0) -> np.ndarray:
         """Decimate input data by decimation factor.
 
         Parameters
@@ -119,7 +119,7 @@ class DigitalDownConverter:
         return input_data[decimate_offset :: self.decimation_factor]
 
     def run(self, input_data: np.ndarray, center_freq: float) -> np.ndarray:
-        """Digital Down Conversion.
+        """Digital Down-Conversion.
 
         Parameters
         ----------
