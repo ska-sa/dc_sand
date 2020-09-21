@@ -3,8 +3,10 @@ import numpy as np
 import scipy.stats
 
 
-def generate_real_cw(cw_scale: float, freq: float, fs: int, num_samples: int, awgn_scale: float) -> np.ndarray:
-    """Generate a real-valued CW vector.
+def generate_carrier_wave(
+    cw_scale: float, freq: float, sampling_frequency: int, num_samples: int, noise_scale: float, complex: bool
+) -> np.ndarray:
+    """Generate a carrier wave vector.
 
     Parameters
     ----------
@@ -12,66 +14,37 @@ def generate_real_cw(cw_scale: float, freq: float, fs: int, num_samples: int, aw
         factor to scale generated noise.
     freq: float
         Frequency of CW to be generated.
-    fs: int
-        Sample rate for generated CW.
+    sampling_frequency: int
+        Sample rate for generated CW. This is expressed in Hz. E.g. 1712e6.
     num_samples: int
         Number of samples for generated CW.
-    awgn_scale: float
-        factor to scale generated noise.
-
-    Returns
-    -------
-    np.ndarray of type float
-        Output array of real-valued samples for generated CW.
-    """
-    samples_per_cycle = fs / freq
-    cycles = int((num_samples) / samples_per_cycle)
-    in_array = np.linspace(0, (cycles), num_samples)
-
-    # Generate CWG
-    cwg = np.real(cw_scale * np.exp(1j * 2 * np.pi * in_array).astype(np.complex64)).astype(np.float32)
-
-    # Generate AWGN
-    awgn = _generate_awgn(awgn_scale, len(cwg))
-
-    return cwg + awgn
-
-
-def generate_complx_cw(cw_scale: float, freq: float, fs: int, num_samples: int, awgn_scale: float) -> np.ndarray:
-    """Generate a complex-valued CW vector.
-
-    Parameterž
-    ----------
-    cw_scale: float
-        factor to scale generated noise.
-    freq: float
-        Frequency of CW to be generated.
-    fs: int
-        Sample rate for generated CW.
-    num_samples: int
-        Number of samples for generated CW.
-    awgn_scale: float
-        factor to scale generated noise.
+    noise_scale: float
+        Factor to scale generated noise.
+    complex: bool
+        Specify if realor complex carrier wave is required.
 
     Returns
     -------
     np.ndarray of type float
         Output array of complex-valued samples for generated CW.
     """
-    samples_per_cycle = fs / freq
+    samples_per_cycle = sampling_frequency / freq
     cycles = int((num_samples) / samples_per_cycle)
     in_array = np.linspace(0, (cycles), num_samples)
 
-    # Generate CWG
-    cwg = cw_scale * (np.exp(1j * 2 * np.pi * in_array)).astype(np.complex64)
+    # Generate Carrier Wave.
+    carrier_wave_complex = cw_scale * (np.exp(-1j * 2 * np.pi * in_array)).astype(np.complex64)
 
-    # Generate AWGN
-    awgn = _generate_awgn(awgn_scale, len(cwg))
+    # Generate Additive White Gaussian Noise.
+    additive_white_gaussian_noise = _generate_noise(noise_scale, len(carrier_wave_complex))
 
-    return cwg + awgn
+    if complex is True:
+        return carrier_wave_complex + additive_white_gaussian_noise
+    else:
+        return np.real(carrier_wave_complex + additive_white_gaussian_noise)
 
 
-def _generate_awgn(scale: float, array_length: int) -> np.ndarray:
+def _generate_noise(scale: float, array_length: int) -> np.ndarray:
     """Generate additive white gaussian noise.
 
     Parameters
