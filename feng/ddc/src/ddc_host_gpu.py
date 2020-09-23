@@ -6,11 +6,12 @@ import numpy as np
 from numpy import genfromtxt
 import cwg
 
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+
 # from IPython import embed
 
 # A big number. Just be careful not to overload the GPU.
-input_samples = 8192 * 2
+input_samples = 8192 * 8
 decimation_rate = 16
 output_samples = input_samples / decimation_rate
 fir_size = 256
@@ -51,10 +52,10 @@ fir_coeffs_device = cuda.mem_alloc(fir_coeffs_host.nbytes)
 data_downsampled_out_host = cuda.pagelocked_empty(int(output_samples * 2), dtype=np.float32)  # *2 for complex values
 data_downsampled_out_device = cuda.mem_alloc(data_downsampled_out_host.nbytes)
 
-data_debug_real_out_host = cuda.pagelocked_empty(int(input_samples), dtype=np.float32)
+data_debug_real_out_host = cuda.pagelocked_empty(int(input_samples + fir_size), dtype=np.float32)
 data_debug_real_out_device = cuda.mem_alloc(data_debug_real_out_host.nbytes)
 
-data_debug_imag_out_host = cuda.pagelocked_empty(int(input_samples), dtype=np.float32)
+data_debug_imag_out_host = cuda.pagelocked_empty(int(input_samples + fir_size), dtype=np.float32)
 data_debug_imag_out_device = cuda.mem_alloc(data_debug_imag_out_host.nbytes)
 
 print("Reading source file and JIT-compiling kernel...")
@@ -72,13 +73,13 @@ fir_coeffs_host[:] = _import_ddc_filter_coeffs(filename=ddc_coeff_filename)
 print(f"FIR length is {len(fir_coeffs_host)}")
 
 # Setup Mixing CW
-osc_frequency = 428e6
+osc_frequency = 100e6
 print(f"Mixing CW is {osc_frequency/1e6}MHz")
 
 # Setup input data
 cw_scale = 1
-freq = 411.25e6
-# freq = 454.75e6
+# freq = 411.25e6
+freq = 110e6
 sampling_frequency = int(1712e6)
 noise_scale = 0
 cw = cwg.generate_carrier_wave(
@@ -103,8 +104,9 @@ cuda.memcpy_htod(data_in_device, data_in_host)
 cuda.memcpy_htod(fir_coeffs_device, fir_coeffs_host)
 
 # Calculate number of blocks
-samples_per_block = 4096  # 4096
-total_blocks = int(input_samples / samples_per_block) - 1
+samples_per_block = 4096
+# total_blocks = int(input_samples / samples_per_block) - 1
+total_blocks = int(input_samples / samples_per_block)
 print(f"Total Blocks is {total_blocks}")
 
 print("Executing kernel...")
@@ -125,6 +127,8 @@ cuda.memcpy_dtoh(data_debug_real_out_host, data_debug_real_out_device)
 cuda.memcpy_dtoh(data_debug_imag_out_host, data_debug_imag_out_device)
 
 
+# *** Debug ***
+
 # print(data_downsampled_out_host[0],data_downsampled_out_host[256],data_downsampled_out_host[511],data_downsampled_out_host[512])
 print(total_blocks)
 print(f"Length of the input data is {len(data_in_host)}")
@@ -136,39 +140,25 @@ print(f"data_debug_imag_out_host length is {len(data_debug_imag_out_host)}")
 decimated_data = data_downsampled_out_host[0::2] + np.array(data_downsampled_out_host[1::2]) * 1j
 
 input_data_fft = np.abs(np.power(np.fft.rfft(data_in_host, axis=-1), 2))
-decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[0:512], axis=-1), 2))
+decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[64 : (64 + 1024)], axis=-1), 2))
 
-print(f"length of decimate is {len(data_downsampled_out_host)}")
-
-
-# *** Debug ***
-
-# plt.figure(1)
-# plt.plot(data_in_host)
-
-
-complx = data_debug_real_out_host[3840:12032] + data_debug_imag_out_host[3840:12032] * 1j
-print(f"complx length is: {len(complx)}")
-fft_debug = np.abs(np.power(np.fft.fft(complx, axis=-1), 2))
+print(f"length of decimate is {len(decimated_data)}")
 
 # embed()
 
-# plt.figure(1)
-# plt.plot(np.real(decimated_data[0:511]),'.-')
+plt.figure(1)
+plt.plot(np.real(decimated_data), ".-")
 
-# plt.figure(2)
-# plt.plot(np.imag(decimated_data[0:511]),'.-')
+plt.figure(2)
+plt.plot(np.imag(decimated_data), ".-")
 
-# plt.figure(3)
-# plt.plot(data_debug_real_out_host, '.-')
+plt.figure(3)
+plt.plot(data_debug_real_out_host)
 
-# plt.figure(4)
-# plt.plot(data_debug_imag_out_host, '.-')
+plt.figure(4)
+plt.plot(data_debug_imag_out_host)
 
-# plt.figure(5)
-# plt.semilogy(decimated_cw_fft)
+plt.figure(5)
+plt.semilogy(decimated_cw_fft)
 
-# plt.figure(6)
-# plt.semilogy(np.abs(np.power(np.fft.fft(decimated_data[0:512], axis=-1),2)))
-
-# plt.show()
+plt.show()
