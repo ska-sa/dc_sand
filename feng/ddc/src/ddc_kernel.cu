@@ -1,19 +1,14 @@
 #include <cuComplex.h>
 
-// #define N 1048576
 #define N 8192*8
 #define Fs 1712e6
-// #define D 16
 #define Fir_length 256
 
 __device__ float mixed_data_re[Fir_length + N];
 __device__ float mixed_data_im[Fir_length + N];  
-// __device__ float mixed_data_re[N];
-// __device__ float mixed_data_im[N];  
 
 __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsampled_out, float osc_frequency, float *debug_data_real, float *debug_data_imag)
 {
-    // __shared__ float fir_coeffs_shared[256+256];
     __shared__ float fir_coeffs_shared[Fir_length];
     // __shared__ float prev_data_slice_re[Fir_length];
     // __shared__ float prev_data_slice_im[Fir_length];
@@ -23,6 +18,8 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
     //Stage 1: Load Data From memory, mix and store in shared memory
     //1.1 Load FIR coeffs into shared memory
     fir_coeffs_shared[threadIdx.x] = fir_coeffs[threadIdx.x];
+
+    // printf("Lookup state is %f\n", lookup_state);
 
     if (blockIdx.x == 0){
         // 1.2 Copy the trailing data (of Fir_length) to the beginning of the new data word that has been received.
@@ -74,10 +71,14 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         mixedSample_im = mixerValue_im * sample_in;
         // debug_data_real[index_in + Fir_length] = mixedSample_re;
         // debug_data_imag[index_in + Fir_length] = mixedSample_im;
+        debug_data_real[index_in + Fir_length] = mixerValue_re;
+        debug_data_imag[index_in + Fir_length] = mixerValue_im;
+        
 
         //1.4 Store in memory. Offset by Fir_length as the first Fir_length samples will be fromthe held back slice from the previous
         mixed_data_re[index_in + Fir_length] = mixedSample_re;
         mixed_data_im[index_in + Fir_length] = mixedSample_im;
+        // lookup_state[0] = 1.0; 
     }
     
     // 2. Data has been mixed, now the fir will be applied. Needs to be synced before this happends
@@ -109,15 +110,15 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         sample_out_re = sample_out_re + mixedSample_re * fir_coeff;
         sample_out_im = sample_out_im + mixedSample_im * fir_coeff;
 
-        if (blockIdx.x ==1){
-            printf("block is %d and i is %d with data_idx is %d and coeff is %f and sample_out_re is %f\n", blockIdx.x, i,data_idx, fir_coeff, sample_out_re);
-        }
+        // if (blockIdx.x ==1){
+        //     printf("block is %d and i is %d with data_idx is %d and coeff is %f and sample_out_re is %f\n", blockIdx.x, i,data_idx, fir_coeff, sample_out_re);
+        // }
     }
 
     int index_out = (blockIdx.x*Fir_length + threadIdx.x)*2;
 
-    debug_data_real[index_out] = sample_out_re;
-    debug_data_imag[index_out] = sample_out_im;
+    // debug_data_real[index_out] = sample_out_re;
+    // debug_data_imag[index_out] = sample_out_im;
 
     // printf("index_out is %d and sample_re is %f\n", index_out, sample_out_re);
 
