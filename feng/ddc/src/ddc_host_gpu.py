@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 # from IPython import embed
 
 # A big number. Just be careful not to overload the GPU.
-total_samples = 8192 * 8
+total_samples = 8192 * 4
 
-input_samples = 8192 * 2
+input_samples = 8192 * 4
 decimation_rate = 16
 output_samples = input_samples / decimation_rate
 fir_size = 256
@@ -94,7 +94,7 @@ print(f"Mixing CW is {osc_frequency/1e6}MHz")
 # Setup input data
 cw_scale = 1
 # freq = 411.25e6
-freq = 110e6
+freq = 110000000
 sampling_frequency = int(1712e6)
 noise_scale = 0
 cw = cwg.generate_carrier_wave(
@@ -108,18 +108,18 @@ cw = cwg.generate_carrier_wave(
 print(f"Input CW is {freq/1e6}MHz")
 
 # Compute number of iterations to work through data.
-num_iter = int(total_samples / input_samples)
-print(f"Number of iterations is {num_iter}")
+num_chunks = int(total_samples / input_samples)
+print(f"Number of iterations is {num_chunks}")
 
-for i in range(num_iter):
-    print(f"i is {i}")
-    print(f"Index range is {i*input_samples} to {i*input_samples + input_samples}")
+for chunk_number in range(num_chunks):
+    print(f"chunk_number is {chunk_number}")
+    print(f"Index range is {chunk_number*input_samples} to {chunk_number*input_samples + input_samples}")
 
     # Data input for the DDC
-    test = cw[i * input_samples : (i * input_samples + input_samples)]
+    test = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
     print(f"test shape is {np.shape(test)}")
 
-    data_in_host[:] = cw[i * input_samples : (i * input_samples + input_samples)]
+    data_in_host[:] = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
     print(f"Length of CW is {len(cw)}")
 
     # Fake Data for debug
@@ -136,6 +136,7 @@ for i in range(num_iter):
         fir_coeffs_device,
         data_downsampled_out_device,
         np.float32(osc_frequency),
+        np.int32(chunk_number),
         data_debug_real_out_device,
         data_debug_imag_out_device,  # You can't pass a kernel a normal python int as an argument, it needs to be a numpy dtype.
         block=(256, 1, 1),  # CUDA block and grid sizes can be 3-dimensional,
@@ -147,8 +148,6 @@ for i in range(num_iter):
     cuda.memcpy_dtoh(data_debug_real_out_host, data_debug_real_out_device)
     cuda.memcpy_dtoh(data_debug_imag_out_host, data_debug_imag_out_device)
     # cuda.memcpy_dtoh(lookup_state_host, lookup_state_device)
-
-    # print(f"LUState Host is {lookup_state_host}")
 
     # *** Debug ***
 
@@ -163,25 +162,41 @@ for i in range(num_iter):
     decimated_data = data_downsampled_out_host[0::2] + np.array(data_downsampled_out_host[1::2]) * 1j
 
     input_data_fft = np.abs(np.power(np.fft.rfft(data_in_host, axis=-1), 2))
-    decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[64 : (64 + 1024)], axis=-1), 2))
+    # decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[64 : (64 + 1024)], axis=-1), 2))
+    decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[256 : (256 + 1024)], axis=-1), 2))
 
-    print(f"length of decimate is {len(decimated_data)}")
+    debug_cmplx = np.array(data_debug_real_out_host) + np.array(data_debug_imag_out_host) * 1j
+    debug_fft = np.abs(np.power(np.fft.fft(debug_cmplx[256 : (256 + 1024)], axis=-1), 2))
+    # debug_fft = np.abs(np.power(np.fft.rfft(data_debug_real_out_host[256 : (256 + 1023)], axis=-1), 2))
+
+    print(f"length of decimate is {len(debug_fft)}")
 
     # embed()
 
-    # plt.figure(1)
-    # plt.plot(np.real(decimated_data), ".-")
+    if chunk_number == 0:
 
-    # plt.figure(2)
-    # plt.plot(np.imag(decimated_data), ".-")
+        # plt.figure(1)
+        # plt.plot(np.real(decimated_data), ".-")
 
-    # plt.figure(3)
-    # plt.plot(data_debug_real_out_host)
+        # plt.figure(2)
+        # plt.plot(np.imag(decimated_data), ".-")
 
-    # plt.figure(4)
-    # plt.plot(data_debug_imag_out_host)
+        plt.figure(1)
+        plt.plot(np.real(decimated_data))
 
-    plt.figure(5)
-    plt.semilogy(decimated_cw_fft)
+        plt.figure(2)
+        plt.plot(np.imag(decimated_data))
 
-    plt.show()
+        # plt.figure(3)
+        # plt.plot(data_debug_real_out_host)
+
+        # plt.figure(4)
+        # plt.plot(data_debug_imag_out_host)
+
+        # plt.figure(5)
+        # plt.semilogy(debug_fft)
+
+        plt.figure(6)
+        plt.semilogy(decimated_cw_fft)
+
+        plt.show()
