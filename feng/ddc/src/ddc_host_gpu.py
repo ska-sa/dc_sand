@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # from IPython import embed
 
 # A big number. Just be careful not to overload the GPU.
-total_samples = 8192 * 4
+total_samples = 8192 * 1024
 
 input_samples = 8192 * 4
 decimation_rate = 16
@@ -38,12 +38,11 @@ def _import_ddc_filter_coeffs(filename: str = "ddc_filter_coeffs_107.csv"):
     print(f"Importing coefficients from {filename}")
     ddc_coeffs = genfromtxt(filename, delimiter=",")
     print(f"Imported {len(ddc_coeffs)} coefficients")
-    # self.ddc_filter_coeffs = ddc_coeffs
     return ddc_coeffs
 
 
 # Calculate number of blocks
-samples_per_block = 4096
+samples_per_block = fir_size * 16
 # total_blocks = int(input_samples / samples_per_block) - 1
 total_blocks = int(input_samples / samples_per_block)
 print(f"Total Blocks is {total_blocks}")
@@ -94,7 +93,8 @@ print(f"Mixing CW is {osc_frequency/1e6}MHz")
 # Setup input data
 cw_scale = 1
 # freq = 411.25e6
-freq = 110000000
+freq = 110e6
+# freq = 103343750
 sampling_frequency = int(1712e6)
 noise_scale = 0
 cw = cwg.generate_carrier_wave(
@@ -111,6 +111,14 @@ print(f"Input CW is {freq/1e6}MHz")
 num_chunks = int(total_samples / input_samples)
 print(f"Number of iterations is {num_chunks}")
 
+# for i in range(258):
+#     print(f"i is {i} and data is {cw[i]}")
+
+# Test
+# linear_input = np.linspace(0,total_samples-1,total_samples)
+# print(f"linear is {linear_input[total_samples-1]}")
+# cw = linear_input
+
 for chunk_number in range(num_chunks):
     print(f"chunk_number is {chunk_number}")
     print(f"Index range is {chunk_number*input_samples} to {chunk_number*input_samples + input_samples}")
@@ -118,9 +126,12 @@ for chunk_number in range(num_chunks):
     # Data input for the DDC
     test = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
     print(f"test shape is {np.shape(test)}")
+    # print(f"start value index is {(chunk_number * input_samples)} and data is {cw[chunk_number * input_samples]} and end value indx is {(chunk_number * input_samples + input_samples)} and data is {cw[chunk_number * input_samples + input_samples]}")
 
-    data_in_host[:] = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
-    print(f"Length of CW is {len(cw)}")
+    # data_in_host[:] = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples-1)]
+    data_in_host[0:input_samples] = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
+
+    # print(f"Length of CW is {len(cw)}")
 
     # Fake Data for debug
     # data_in_host[:] = np.linspace(0,16383,16384)
@@ -128,7 +139,6 @@ for chunk_number in range(num_chunks):
     print("Copying input data to device...")
     cuda.memcpy_htod(data_in_device, data_in_host)
     cuda.memcpy_htod(fir_coeffs_device, fir_coeffs_host)
-    # cuda.memcpy_htod(lookup_state_device, lookup_state_host)
 
     print("Executing kernel...")
     ddc_kernel(
@@ -139,7 +149,7 @@ for chunk_number in range(num_chunks):
         np.int32(chunk_number),
         data_debug_real_out_device,
         data_debug_imag_out_device,  # You can't pass a kernel a normal python int as an argument, it needs to be a numpy dtype.
-        block=(256, 1, 1),  # CUDA block and grid sizes can be 3-dimensional,
+        block=(fir_size, 1, 1),  # CUDA block and grid sizes can be 3-dimensional,
         grid=(total_blocks, 1, 1),
     )  # but we're just using a 1D vector here.
 
@@ -147,19 +157,18 @@ for chunk_number in range(num_chunks):
     cuda.memcpy_dtoh(data_downsampled_out_host, data_downsampled_out_device)
     cuda.memcpy_dtoh(data_debug_real_out_host, data_debug_real_out_device)
     cuda.memcpy_dtoh(data_debug_imag_out_host, data_debug_imag_out_device)
-    # cuda.memcpy_dtoh(lookup_state_host, lookup_state_device)
 
     # *** Debug ***
 
     # print(data_downsampled_out_host[0],data_downsampled_out_host[256],data_downsampled_out_host[511],data_downsampled_out_host[512])
-    print(total_blocks)
-    print(f"Length of the input data is {len(data_in_host)}")
-    print(f"Length of the decimated data is {len(data_downsampled_out_host)}")
+    # print(total_blocks)
+    # print(f"Length of the input data is {len(data_in_host)}")
+    # print(f"Length of the decimated data is {len(data_downsampled_out_host)}")
 
-    print(f"data_debug_real_out_host length is {len(data_debug_real_out_host)}")
-    print(f"data_debug_imag_out_host length is {len(data_debug_imag_out_host)}")
+    # print(f"data_debug_real_out_host length is {len(data_debug_real_out_host)}")
+    # print(f"data_debug_imag_out_host length is {len(data_debug_imag_out_host)}")
 
-    decimated_data = data_downsampled_out_host[0::2] + np.array(data_downsampled_out_host[1::2]) * 1j
+    decimated_data = np.array(data_downsampled_out_host[0::2]) + np.array(data_downsampled_out_host[1::2]) * 1j
 
     input_data_fft = np.abs(np.power(np.fft.rfft(data_in_host, axis=-1), 2))
     # decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[64 : (64 + 1024)], axis=-1), 2))
@@ -169,11 +178,13 @@ for chunk_number in range(num_chunks):
     debug_fft = np.abs(np.power(np.fft.fft(debug_cmplx[256 : (256 + 1024)], axis=-1), 2))
     # debug_fft = np.abs(np.power(np.fft.rfft(data_debug_real_out_host[256 : (256 + 1023)], axis=-1), 2))
 
-    print(f"length of decimate is {len(debug_fft)}")
+    # print(f"length of decimate is {len(debug_fft)}")
 
     # embed()
 
-    if chunk_number == 0:
+    print(" ")
+
+    if chunk_number == 1:
 
         # plt.figure(1)
         # plt.plot(np.real(decimated_data), ".-")
@@ -181,11 +192,11 @@ for chunk_number in range(num_chunks):
         # plt.figure(2)
         # plt.plot(np.imag(decimated_data), ".-")
 
-        plt.figure(1)
-        plt.plot(np.real(decimated_data))
+        # plt.figure(1)
+        # plt.plot(np.real(decimated_data))
 
-        plt.figure(2)
-        plt.plot(np.imag(decimated_data))
+        # plt.figure(2)
+        # plt.plot(np.imag(decimated_data))
 
         # plt.figure(3)
         # plt.plot(data_debug_real_out_host)
@@ -194,7 +205,7 @@ for chunk_number in range(num_chunks):
         # plt.plot(data_debug_imag_out_host)
 
         # plt.figure(5)
-        # plt.semilogy(debug_fft)
+        # plt.semilogy(debug_fft)s
 
         plt.figure(6)
         plt.semilogy(decimated_cw_fft)
