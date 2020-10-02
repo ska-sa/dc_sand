@@ -62,8 +62,12 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         // 1.2 Load Data From Global Memory
 
         int index_in = inOffset + threadIdx.x + i*Fir_length;
-        int lookup_index = index_in + chunk_number*N;
-        // int lookup_index = index_in;
+
+        // The lookup index needs a Fir_length offset as the vector it will be multiplied with is later offset by this amount when appended to the 'mixed_data_re' vector.
+        int lookup_index = (index_in + Fir_length);   
+
+        // int lookup_index = (index_in + Fir_length) + (256*7*(chunk_number)*N+Fir_length);
+
         float sample_in = data_in[index_in];
 
         // if (index_in == 0)
@@ -116,10 +120,12 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         //     printf("mix_addr_dst is %d and mixedSample_re if %f\n", mix_addr_dst, mixedSample_re);
         // }
 
+        // debug_data_real[mix_addr_dst] = sample_in;
+        // debug_data_imag[mix_addr_dst] = sample_in;
         // debug_data_real[mix_addr_dst] = mixedSample_re;
         // debug_data_imag[mix_addr_dst] = mixedSample_im;
-        // debug_data_real[index_in + Fir_length] = mixerValue_re;
-        // debug_data_imag[index_in + Fir_length] = mixerValue_im;
+        debug_data_real[mix_addr_dst] = mixerValue_re;
+        debug_data_imag[mix_addr_dst] = mixerValue_im;
 
         //1.4 Store in memory. Offset by Fir_length as the first Fir_length samples will be fromthe held back slice from the previous
         mixed_data_re[mix_addr_dst] = mixedSample_re;
@@ -154,8 +160,8 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         float mixedSample_re = mixed_data_re[data_idx];
         float mixedSample_im = mixed_data_im[data_idx];
 
-        debug_data_real[data_idx] = mixedSample_re;
-        debug_data_imag[data_idx] = mixedSample_im;
+        // debug_data_real[data_idx] = mixedSample_re;
+        // debug_data_imag[data_idx] = mixedSample_im;
 
         // if (data_idx < 3){
         //     printf("Data Index is %d\n", data_idx);

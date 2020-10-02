@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # from IPython import embed
 
 # A big number. Just be careful not to overload the GPU.
-total_samples = 8192 * 1024
+total_samples = 8192 * 2048
 
 input_samples = 8192 * 4
 decimation_rate = 16
@@ -93,10 +93,10 @@ print(f"Mixing CW is {osc_frequency/1e6}MHz")
 # Setup input data
 cw_scale = 1
 # freq = 411.25e6
-freq = 110e6
+freq = 107e6
 # freq = 103343750
 sampling_frequency = int(1712e6)
-noise_scale = 0
+noise_scale = 0.00001
 cw = cwg.generate_carrier_wave(
     cw_scale=cw_scale,
     freq=freq,
@@ -109,7 +109,7 @@ print(f"Input CW is {freq/1e6}MHz")
 
 # Compute number of iterations to work through data.
 num_chunks = int(total_samples / input_samples)
-print(f"Number of iterations is {num_chunks}")
+print(f"Number of chunks is {num_chunks}")
 
 # for i in range(258):
 #     print(f"i is {i} and data is {cw[i]}")
@@ -121,11 +121,11 @@ print(f"Number of iterations is {num_chunks}")
 
 for chunk_number in range(num_chunks):
     print(f"chunk_number is {chunk_number}")
-    print(f"Index range is {chunk_number*input_samples} to {chunk_number*input_samples + input_samples}")
+    # print(f"Index range is {chunk_number*input_samples} to {chunk_number*input_samples + input_samples}")
 
     # Data input for the DDC
     test = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
-    print(f"test shape is {np.shape(test)}")
+    # print(f"test shape is {np.shape(test)}")
     # print(f"start value index is {(chunk_number * input_samples)} and data is {cw[chunk_number * input_samples]} and end value indx is {(chunk_number * input_samples + input_samples)} and data is {cw[chunk_number * input_samples + input_samples]}")
 
     # data_in_host[:] = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples-1)]
@@ -136,7 +136,7 @@ for chunk_number in range(num_chunks):
     # Fake Data for debug
     # data_in_host[:] = np.linspace(0,16383,16384)
 
-    print("Copying input data to device...")
+    # print("Copying input data to device...")
     cuda.memcpy_htod(data_in_device, data_in_host)
     cuda.memcpy_htod(fir_coeffs_device, fir_coeffs_host)
 
@@ -153,7 +153,7 @@ for chunk_number in range(num_chunks):
         grid=(total_blocks, 1, 1),
     )  # but we're just using a 1D vector here.
 
-    print("Copying output data back to the host...")
+    # print("Copying output data back to the host...")
     cuda.memcpy_dtoh(data_downsampled_out_host, data_downsampled_out_device)
     cuda.memcpy_dtoh(data_debug_real_out_host, data_debug_real_out_device)
     cuda.memcpy_dtoh(data_debug_imag_out_host, data_debug_imag_out_device)
@@ -184,7 +184,7 @@ for chunk_number in range(num_chunks):
 
     print(" ")
 
-    if chunk_number == 1:
+    if chunk_number == 511:
 
         # plt.figure(1)
         # plt.plot(np.real(decimated_data), ".-")
@@ -205,7 +205,7 @@ for chunk_number in range(num_chunks):
         # plt.plot(data_debug_imag_out_host)
 
         # plt.figure(5)
-        # plt.semilogy(debug_fft)s
+        # plt.semilogy(debug_fft)
 
         plt.figure(6)
         plt.semilogy(decimated_cw_fft)
