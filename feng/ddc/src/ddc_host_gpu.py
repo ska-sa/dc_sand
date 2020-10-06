@@ -43,7 +43,6 @@ def _import_ddc_filter_coeffs(filename: str = "ddc_filter_coeffs_107.csv"):
 
 # Calculate number of blocks
 samples_per_block = fir_size * 16
-# total_blocks = int(input_samples / samples_per_block) - 1
 total_blocks = int(input_samples / samples_per_block)
 print(f"Total Blocks is {total_blocks}")
 
@@ -67,24 +66,14 @@ data_debug_real_out_device = cuda.mem_alloc(data_debug_real_out_host.nbytes)
 data_debug_imag_out_host = cuda.pagelocked_empty(int(input_samples + fir_size), dtype=np.float32)
 data_debug_imag_out_device = cuda.mem_alloc(data_debug_imag_out_host.nbytes)
 
-# lookup_state_host = cuda.pagelocked_empty(int(lookup_state_size), dtype=np.float32)
-# lookup_state_device = cuda.mem_alloc(lookup_state_host.nbytes)
-
-# lookup_state_host[:] = 0.0
-
 print("Reading source file and JIT-compiling kernel...")
 module = SourceModule(open("ddc_kernel.cu").read())
-# module = SourceModule(open("ddc_kernel_basic.cu").read())
 ddc_kernel = module.get_function("kernel_ddc")
 
 print(f"Populating host input vectors with random data with an amplitude of {volume_knob}...")
 # We're using the [:] here so that the interpreter just updates the values within the numpy ndarray, rather
 # than clobbering the specially-prepared pagelocked memory with a new ndarray.
-# data_in_host[:] = volume_knob*np.random.randn(input_samples)
-# fir_coeffs_host[:] = volume_knob*np.random.randn(fir_size) #TODO: Load Correct Coeffs
 fir_coeffs_host[:] = _import_ddc_filter_coeffs(filename=ddc_coeff_filename)
-
-print(f"FIR length is {len(fir_coeffs_host)}")
 
 # Setup Mixing CW
 osc_frequency = 100e6
@@ -92,9 +81,9 @@ print(f"Mixing CW is {osc_frequency/1e6}MHz")
 
 # Setup input data
 cw_scale = 1
-# freq = 411.25e6
 freq = 107e6
 # freq = 103343750
+# freq = 100000100
 sampling_frequency = int(1712e6)
 noise_scale = 0.00001
 cw = cwg.generate_carrier_wave(
@@ -111,20 +100,17 @@ print(f"Input CW is {freq/1e6}MHz")
 num_chunks = int(total_samples / input_samples)
 print(f"Number of chunks is {num_chunks}")
 
-# for i in range(258):
-#     print(f"i is {i} and data is {cw[i]}")
-
 # Test
 # linear_input = np.linspace(0,total_samples-1,total_samples)
 # print(f"linear is {linear_input[total_samples-1]}")
 # cw = linear_input
 
 for chunk_number in range(num_chunks):
-    print(f"chunk_number is {chunk_number}")
+    # print(f"chunk_number is {chunk_number}")
     # print(f"Index range is {chunk_number*input_samples} to {chunk_number*input_samples + input_samples}")
 
     # Data input for the DDC
-    test = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
+    # test = cw[chunk_number * input_samples : (chunk_number * input_samples + input_samples)]
     # print(f"test shape is {np.shape(test)}")
     # print(f"start value index is {(chunk_number * input_samples)} and data is {cw[chunk_number * input_samples]} and end value indx is {(chunk_number * input_samples + input_samples)} and data is {cw[chunk_number * input_samples + input_samples]}")
 
@@ -133,14 +119,11 @@ for chunk_number in range(num_chunks):
 
     # print(f"Length of CW is {len(cw)}")
 
-    # Fake Data for debug
-    # data_in_host[:] = np.linspace(0,16383,16384)
-
     # print("Copying input data to device...")
     cuda.memcpy_htod(data_in_device, data_in_host)
     cuda.memcpy_htod(fir_coeffs_device, fir_coeffs_host)
 
-    print("Executing kernel...")
+    # print("Executing kernel...")
     ddc_kernel(
         data_in_device,
         fir_coeffs_device,
@@ -159,30 +142,14 @@ for chunk_number in range(num_chunks):
     cuda.memcpy_dtoh(data_debug_imag_out_host, data_debug_imag_out_device)
 
     # *** Debug ***
-
-    # print(data_downsampled_out_host[0],data_downsampled_out_host[256],data_downsampled_out_host[511],data_downsampled_out_host[512])
-    # print(total_blocks)
-    # print(f"Length of the input data is {len(data_in_host)}")
-    # print(f"Length of the decimated data is {len(data_downsampled_out_host)}")
-
-    # print(f"data_debug_real_out_host length is {len(data_debug_real_out_host)}")
-    # print(f"data_debug_imag_out_host length is {len(data_debug_imag_out_host)}")
-
     decimated_data = np.array(data_downsampled_out_host[0::2]) + np.array(data_downsampled_out_host[1::2]) * 1j
 
     input_data_fft = np.abs(np.power(np.fft.rfft(data_in_host, axis=-1), 2))
-    # decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[64 : (64 + 1024)], axis=-1), 2))
     decimated_cw_fft = np.abs(np.power(np.fft.fft(decimated_data[256 : (256 + 1024)], axis=-1), 2))
 
     debug_cmplx = np.array(data_debug_real_out_host) + np.array(data_debug_imag_out_host) * 1j
-    debug_fft = np.abs(np.power(np.fft.fft(debug_cmplx[256 : (256 + 1024)], axis=-1), 2))
-    # debug_fft = np.abs(np.power(np.fft.rfft(data_debug_real_out_host[256 : (256 + 1023)], axis=-1), 2))
-
-    # print(f"length of decimate is {len(debug_fft)}")
-
-    # embed()
-
-    print(" ")
+    skip = 0
+    debug_fft = np.abs(np.power(np.fft.fft(debug_cmplx[skip : (skip + 1024)], axis=-1), 2))
 
     if chunk_number == 511:
 
