@@ -47,8 +47,9 @@ def _import_ddc_filter_coeffs(filename: str = "ddc_coeff_107MHz.csv"):
 
 
 # Calculate number of blocks
-samples_per_block = fir_size * 16
+samples_per_block = 4096 #Limited by the amount of shared memory available per block
 total_blocks = int(input_samples / samples_per_block)
+threads_per_block = samples_per_block//decimation_rate
 print(f"Total Blocks is {total_blocks}")
 
 
@@ -158,7 +159,7 @@ for chunk_number in range(num_chunks):
         np.int32(chunk_number),
         data_debug_real_out_device,
         data_debug_imag_out_device,  # You can't pass a kernel a normal python int as an argument, it needs to be a numpy dtype.
-        block=(fir_size, 1, 1),  # CUDA block and grid sizes can be 3-dimensional,
+        block=(threads_per_block, 1, 1),  # CUDA block and grid sizes can be 3-dimensional,
         grid=(total_blocks, 1, 1),
     )  # but we're just using a 1D vector here.
 

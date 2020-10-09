@@ -1,15 +1,15 @@
 #include <cuComplex.h>
 
+#define SAMPLES_PER_BLOCK 4096 //Limited by the amount of shared memory available per block
 #define N 4096
 #define Fs 1712e6
 #define Fir_length 256
-#define S 16 
 
 __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsampled_out, float osc_frequency, int chunk_number, float *debug_data_real, float *debug_data_imag)
 {
     __shared__ float fir_coeffs_shared[Fir_length];
-    __shared__ float mixed_data_re[Fir_length + N];
-    __shared__ float mixed_data_im[Fir_length + N];
+    __shared__ float mixed_data_re[Fir_length + SAMPLES_PER_BLOCK];
+    __shared__ float mixed_data_im[Fir_length + SAMPLES_PER_BLOCK];
 
     //Stage 1: Load Data From memory, mix and store in shared memory
     //1.1 Load FIR coeffs into shared memory
@@ -18,12 +18,17 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
     __syncthreads();
 
     // int inOffset = (blockIdx.x+1)*4096; //The plus 1 is because we skip the first block of data: assuming that it is wasted as we cannot access past values
-    int inOffset = (blockIdx.x)*(Fir_length*S); //The plus 1 is because we skip the first block of data: assuming that it is wasted as we cannot access past values
+    int inOffset = (blockIdx.x)*(SAMPLES_PER_BLOCK); //The plus 1 is because we skip the first block of data: assuming that it is wasted as we cannot access past values
 
     float sample_in = 0;
     int dgb_addr_dst = 0;
 
-    for(int k = -1; k < 16; k++){ //The minus 1 accounts for the additional FIR length worth of data that we need to load of past values
+    int numLoads = SAMPLES_PER_BLOCK/blockDim.x; // Number of times each thread needs to read input data from global memory. Throws errors whem SAMPLES_PER_BLOCK != 4096 which needs to be investigated
+    int numPrevLoads = Fir_length/blockDim.x;//This works out how many samples from the previous block need to be loaded taking into account the FIR size
+    if (numPrevLoads == 0)
+        numPrevLoads = 1;
+
+    for(int k = -numPrevLoads; k < numLoads; k++){ //The -numPrevLoads accounts for the additional FIR length worth of data that we need to load of past values
         // 1.2 Load Data From Global Memory
         int index_in = inOffset + threadIdx.x + k*Fir_length;
   
@@ -121,8 +126,8 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
         
     }
 
-    int index_out = (blockIdx.x*Fir_length + threadIdx.x)*2;
-    int dbg_idx = (blockIdx.x*Fir_length + threadIdx.x);
+    int index_out = (blockIdx.x*blockDim.x + threadIdx.x)*2;
+    int dbg_idx = (blockIdx.x*blockDim.x + threadIdx.x);
 
     // debug_data_real[dbg_idx] = sample_out_re;
     // debug_data_imag[dbg_idx] = sample_out_im;
