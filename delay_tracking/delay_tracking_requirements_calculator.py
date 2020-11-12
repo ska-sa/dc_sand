@@ -22,19 +22,20 @@ import scipy
 import scipy.constants
 
 
-def calculate_distances_km(src, dest):
+def calculate_distances_km(ant1_coords, ant2_coords):
     """Calculate the distance between two GPS coordinates.
 
     Calculates the distance between two coordinates on the globe. It also projects the distance onto the equator and
     returns this. I thought this projection was important for delay tracking, but the baseline distance is more
     applicable. However the calculation has been left here due to laziness.
 
-    src and dest are expected to each be a tuple containg latitude and longitude coordinates in the decimal degrees
-    format. Example: (14.333,-28.444). The latitude is the first entry and longitude is the second entry.
+    ant1_coords and ant2_coords are expected to each be a tuple containg latitude and longitude coordinates in the
+    decimal degrees format. Example: (14.333,-28.444). The latitude is the first entry and longitude is the second
+    entry.
     """
-    horiz_dist_coords = dest[1] - src[1]
-    vertical_dist_coords = dest[0] - src[0]
-    absolute_distance_km = geopy.distance.GeodesicDistance(src, dest).kilometers
+    horiz_dist_coords = ant2_coords[1] - ant1_coords[1]
+    vertical_dist_coords = ant2_coords[0] - ant1_coords[0]
+    absolute_distance_km = geopy.distance.GeodesicDistance(ant1_coords, ant2_coords).kilometers
     angle = numpy.arctan2(vertical_dist_coords, horiz_dist_coords)
     horizontal_distance_km = abs(absolute_distance_km * numpy.cos(angle))
     return absolute_distance_km, horizontal_distance_km
@@ -70,18 +71,18 @@ distances.sort(key=lambda x: x[2])  # Not technically needed
 max_distance_absolute_tuple = max(distances, key=lambda x: x[2])
 max_distance_horizontal_tuple = max(distances, key=lambda x: x[3])
 
-print(f"Max Distance Tuple: {max_distance_absolute_tuple}")
-print(f"Max Horizontal Distance Tuple: {max_distance_horizontal_tuple}")
+print(f"\tMax Distance Tuple: {max_distance_absolute_tuple}")
+print(f"\tMax Horizontal Distance Tuple: {max_distance_horizontal_tuple}")
 
 # The maximum baseline length determines the maximum coarse delay - this corresponds to an object just on the horizon
 # where the wavefront needs to travel almost directly along the baseline.
-max_absolute_distance_m = 20000  # max_distance_absolute_tuple[2] * 1000
+max_absolute_distance_m = max_distance_absolute_tuple[2] * 1000
 max_coarse_delay_s = max_absolute_distance_m / scipy.constants.c
 
 print()
 print("Calculating Maximum Compensation Delay Requirements:")
 
-print(f"Max Comp Delay with distance of {max_absolute_distance_m:.2f} m: {max_coarse_delay_s*1000*1000:.2f} us")
+print(f"\tMax Comp Delay with distance of {max_absolute_distance_m:.2f} m: {max_coarse_delay_s*1000*1000:.2f} us")
 
 # Technically what was done for MeerKAT is to take "max_coarse_delay_s" and double it - this is done to account for a
 # virtual reference antenna. It is not absolutly necessary to double it, this is just the way we have implemented it.
@@ -93,11 +94,11 @@ print(f"Max Comp Delay with distance of {max_absolute_distance_m:.2f} m: {max_co
 # case estimate for this length is the length of the longest baseline. As such we now have
 # "2 * max_coarse_delay_s + ~max_coarse_delay_s ~= 3 * max_coarse_delay_s"
 print(
-    f"Multiply by three to account for PPS propagation and virtual reference antenna: {max_coarse_delay_s*1000*1000*3:.2f} us"
+    f"\tMultiply by three to account for PPS propagation and virtual reference antenna: {max_coarse_delay_s*1000*1000*3:.2f} us"
 )
 
 print()
-print("Calculating Maximum Delay Rates:")
+print(f"Calculating maximum and minimum delay rates for a baseline length of {max_absolute_distance_m} m:")
 
 
 def calculate_delay_from_source_elevation(baseline_length_m, source_elevation_degrees):
@@ -142,8 +143,8 @@ delay1_s = calculate_delay_from_source_elevation(max_absolute_distance_m, elevat
 delay2_s = calculate_delay_from_source_elevation(max_absolute_distance_m, elevationMin + elevationDeltaPerSecond)
 deltaDelayMin_nanosecondsPerSecond = (delay1_s - delay2_s) * 1000 * 1000 * 1000
 
-print(f"Maximum Delay occuring at elevation of {elevationMax} degrees: {deltaDelayMax_nanosecondsPerSecond} ns/s")
-print(f"Minimum Delay occuring at elevation of {elevationMin} degrees: {deltaDelayMin_nanosecondsPerSecond} ns/s")
+print(f"\tMaximum Delay occuring at elevation of {elevationMax} degrees: {deltaDelayMax_nanosecondsPerSecond} ns/s")
+print(f"\tMinimum Delay occuring at elevation of {elevationMin} degrees: {deltaDelayMin_nanosecondsPerSecond} ns/s")
 
 
 print("Done")
