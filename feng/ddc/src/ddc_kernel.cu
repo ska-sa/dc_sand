@@ -106,7 +106,12 @@ __global__ void kernel_ddc(float *data_in, float *fir_coeffs, float *data_downsa
     int base_shared_mixed_sample_index = threadIdx.x * 16; 
     
     int data_idx = 0;
-
+    // 3.1 This for loop is where most of the kernels computation happens. Each iteration of the loop acceses a different location in shared memory. 
+    // The kernel is heavily bound by the shared memory bandwidth. One isse is that there are many bank conflicts in the shared memory access in 
+    // this loop. Thread 0 acceses element 0. thread 2 acceses element 16, thread 3 acceses element 32, etc. This is almost the worst case shared memory
+    // access pattern. By improving this access pattern it may be possible to get a significant improvement in the kernel performance. (I want to say 10x
+    // improvement but its difficult to be 100% sure of this.).
+   
     for(int i = 0; i < Fir_length; i++){
         data_idx = base_shared_mixed_sample_index - i + (Fir_length-1); // The 255 is added to offset the address so the adressing is flipped (as required for convolution)
         // int dbg_idx = data_idx + (blockIdx.x) * N;
